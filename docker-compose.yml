@@ -1,0 +1,97 @@
+# Local stack. The same API image runs in the cloud — only the environment
+# differs, which is the whole point of keeping every setting in env vars.
+name: avocado
+
+services:
+  db:
+    image: pgvector/pgvector:pg16
+    environment:
+      POSTGRES_USER: avocado
+      POSTGRES_PASSWORD: avocado
+      POSTGRES_DB: avocado
+    ports:
+      # Published on 5434 to stay clear of any other Postgres already running
+      # on this machine. Inside the compose network the port is still 5432.
+      - "5434:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U avocado -d avocado"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    command: redis-server --save 60 1 --loglevel warning
+    ports:
+      - "6380:6379"
+    volumes:
+      - redisdata:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  api:
+    build:
+      context: ./backend
+    env_file: .env
+    environment:
+      DATABASE_URL: postgresql+asyncpg://avocado:avocado@db:5432/avocado
+      REDIS_URL: redis://redis:6379/0
+      # The API shells out to `docker run` for analysis, so the sandbox image
+      # is built on the host, not inside this container.
+      SANDBOX_IMAGE: avocado-sandbox:latest
+    ports:
+      - "8000:8000"
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - ./backend:/app
+      # Lets the API start analysis containers as siblings on the host daemon.
+      # Note this grants the API control of the host Docker daemon — acceptable
+      # for local development, and replaced by a remote sandbox service or a
+      # dedicated daemon in a real deployment.
+      - /var/run/docker.sock:/var/run/docker.sock
+    command: >
+      sh -c "alembic upgrade head &&
+             uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload"
+
+  worker:
+    build:
+      context: ./backend
+    env_file: .env
+    environment:
+      DATABASE_URL: postgresql+asyncpg://avocado:avocado@db:5432/avocado
+      REDIS_URL: redis://redis:6379/0
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - ./backend:/app
+    command: arq app.worker.main.WorkerSettings
+
+  web:
+    build:
+      context: ./frontend
+      target: development
+    environment:
+      VITE_API_BASE_URL: http://localhost:8000/api/v1
+    ports:
+      - "5173:5173"
+    depends_on:
+      - api
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+
+volumes:
+  pgdata:
+  redisdata:
