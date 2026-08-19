@@ -1,0 +1,274 @@
+"""Conversations, grounded answers, and citation handling."""
+
+from __future__ import annotations
+
+import json
+
+import pytest
+
+from tests.integration.test_documents import upload, wait_for_ready
+
+pytestmark = pytest.mark.anyio
+
+POLICY = (
+    "Remote work policy. Employees may work from home up to three days per week. "
+    "Expense reports must be submitted within thirty days. "
+    "The annual training budget is two thousand dollars per person."
+)
+
+
+async def seed_document(client, account, content: bytes = None):
+    response = await upload(
+        client, account, "policy.txt", content or (POLICY.encode() * 5), "text/plain"
+    )
+    assert response.status_code == 201
+    return await wait_for_ready(client, response.json()["document"]["id"], account["headers"])
+
+
+async def new_conversation(client, account, title="Test thread"):
+    response = await client.post(
+        f"/workspaces/{account['workspace_id']}/conversations",
+        json={"title": title},
+        headers=account["headers"],
+    )
+    assert response.status_code == 201
+    return response.json()["id"]
+
+
+async def test_conversation_crud(client, account):
+    conversation_id = await new_conversation(client, account, "Original title")
+
+    listed = await client.get(
+        f"/workspaces/{account['workspace_id']}/conversations", headers=account["headers"]
+    )
+    assert [c["id"] for c in listed.json()] == [conversation_id]
+
+    renamed = await client.patch(
+        f"/workspaces/{account['workspace_id']}/conversations/{conversation_id}",
+        json={"title": "Renamed thread"},
+        headers=account["headers"],
+    )
+    assert renamed.status_code == 200
+    assert renamed.json()["title"] == "Renamed thread"
+
+    deleted = await client.delete(
+        f"/workspaces/{account['workspace_id']}/conversations/{conversation_id}",
+        headers=account["headers"],
+    )
+    assert deleted.status_code == 200
+
+    gone = await client.get(
+        f"/workspaces/{account['workspace_id']}/conversations/{conversation_id}",
+        headers=account["headers"],
+    )
+    assert gone.status_code == 404
+
+
+async def test_a_question_returns_both_halves_of_the_turn(client, account):
+    await seed_document(client, account)
+    conversation_id = await new_conversation(client, account)
+
+    response = await client.post(
+        f"/workspaces/{account['workspace_id']}/conversations/{conversation_id}/messages",
+        json={"content": "How many days can employees work from home?"},
+        headers=account["headers"],
+    )
+    assert response.status_code == 201
+    body = response.json()
+    assert body["user_message"]["role"] == "user"
+    assert body["assistant_message"]["role"] == "assistant"
+    # The model that answered is always recorded, so Auto is never opaque.
+    assert body["assistant_message"]["model_used"]
+
+
+async def test_a_cited_answer_carries_its_sources(client, account, fake_llm):
+    await seed_document(client, account)
+    conversation_id = await new_conversation(client, account)
+
+    fake_llm.responses = ["Employees may work from home three days per week. [1]"]
+    response = await client.post(
+        f"/workspaces/{account['workspace_id']}/conversations/{conversation_id}/messages",
+        json={"content": "remote work from home policy days per week"},
+        headers=account["headers"],
+    )
+
+    citations = response.json()["assistant_message"]["citations"]
+    assert len(citations) == 1
+    citation = citations[0]
+    assert citation["document_name"] == "policy.txt"
+    assert citation["snippet"]
+    assert 0.0 <= citation["score"] <= 1.0
+
+
+async def test_uncited_sources_are_not_attached(client, account, fake_llm):
+    """Citations are evidence the answer used a source, not a dump of hits."""
+    await seed_document(client, account)
+    conversation_id = await new_conversation(client, account)
+
+    fake_llm.responses = ["I am answering without pointing at anything."]
+    response = await client.post(
+        f"/workspaces/{account['workspace_id']}/conversations/{conversation_id}/messages",
+        json={"content": "remote work policy"},
+        headers=account["headers"],
+    )
+    assert response.json()["assistant_message"]["citations"] == []
+
+
+async def test_out_of_range_citation_numbers_are_ignored(client, account, fake_llm):
+    """A model can emit [9] when far fewer sources were supplied."""
+    await seed_document(client, account)
+    conversation_id = await new_conversation(client, account)
+
+    fake_llm.responses = ["Claiming a source that does not exist. [99]"]
+    response = await client.post(
+        f"/workspaces/{account['workspace_id']}/conversations/{conversation_id}/messages",
+        json={"content": "remote work policy"},
+        headers=account["headers"],
+    )
+    assert response.json()["assistant_message"]["citations"] == []
+
+
+async def test_an_empty_workspace_says_so_without_calling_the_model(client, account, fake_llm):
+    conversation_id = await new_conversation(client, account)
+    before = len(fake_llm.calls)
+
+    response = await client.post(
+        f"/workspaces/{account['workspace_id']}/conversations/{conversation_id}/messages",
+        json={"content": "What is the remote work policy?"},
+        headers=account["headers"],
+    )
+    assert response.status_code == 201
+    answer = response.json()["assistant_message"]
+    assert "could not find" in answer["content"].lower()
+    assert answer["citations"] == []
+    # No grounding means no generation call — an ungrounded answer is worse
+    # than an honest miss.
+    assert len(fake_llm.calls) == before
+
+
+async def test_the_first_exchange_names_the_thread(client, account, fake_llm):
+    await seed_document(client, account)
+    conversation_id = await new_conversation(client, account)
+
+    fake_llm.responses = ["An answer. [1]", "Remote Work Policy"]
+    await client.post(
+        f"/workspaces/{account['workspace_id']}/conversations/{conversation_id}/messages",
+        json={"content": "remote work policy"},
+        headers=account["headers"],
+    )
+
+    conversation = await client.get(
+        f"/workspaces/{account['workspace_id']}/conversations/{conversation_id}",
+        headers=account["headers"],
+    )
+    assert conversation.json()["title"] != "New conversation"
+
+
+async def test_history_accumulates_in_order(client, account):
+    await seed_document(client, account)
+    conversation_id = await new_conversation(client, account)
+
+    for question in ("first question", "second question"):
+        await client.post(
+            f"/workspaces/{account['workspace_id']}/conversations/{conversation_id}/messages",
+            json={"content": question},
+            headers=account["headers"],
+        )
+
+    messages = await client.get(
+        f"/workspaces/{account['workspace_id']}/conversations/{conversation_id}/messages",
+        headers=account["headers"],
+    )
+    roles = [m["role"] for m in messages.json()]
+    assert roles == ["user", "assistant", "user", "assistant"]
+    assert messages.json()[0]["content"] == "first question"
+
+
+async def test_retrieval_can_be_restricted_to_chosen_documents(client, account):
+    await seed_document(client, account)
+    other = await upload(
+        client,
+        account,
+        "unrelated.txt",
+        b"Cafeteria menu and parking information. " * 20,
+        "text/plain",
+    )
+    other_doc = await wait_for_ready(client, other.json()["document"]["id"], account["headers"])
+
+    conversation_id = await new_conversation(client, account)
+    response = await client.post(
+        f"/workspaces/{account['workspace_id']}/conversations/{conversation_id}/messages",
+        json={"content": "remote work policy", "document_ids": [other_doc["id"]]},
+        headers=account["headers"],
+    )
+
+    # Any citation must come from the one document that was allowed.
+    for citation in response.json()["assistant_message"]["citations"]:
+        assert citation["document_id"] == other_doc["id"]
+
+
+async def test_streaming_emits_citations_then_tokens_then_done(client, account, fake_llm):
+    await seed_document(client, account)
+    conversation_id = await new_conversation(client, account)
+    fake_llm.responses = ["Streaming answer here. [1]"]
+
+    async with client.stream(
+        "POST",
+        f"/workspaces/{account['workspace_id']}/conversations/{conversation_id}/messages/stream",
+        json={"content": "remote work policy"},
+        headers=account["headers"],
+    ) as response:
+        assert response.status_code == 200
+        assert response.headers["content-type"].startswith("text/event-stream")
+        events, payloads = [], []
+        current = None
+        async for line in response.aiter_lines():
+            if line.startswith("event: "):
+                current = line[7:]
+                events.append(current)
+            elif line.startswith("data: "):
+                payloads.append((current, json.loads(line[6:])))
+
+    assert events[0] == "citations"
+    assert events[-1] == "done"
+    assert "token" in events
+
+    text = "".join(data["text"] for name, data in payloads if name == "token")
+    assert "Streaming answer" in text
+
+    done = next(data for name, data in payloads if name == "done")
+    assert done["model"]
+    assert len(done["citations"]) == 1
+
+
+async def test_a_streamed_turn_is_persisted(client, account, fake_llm):
+    await seed_document(client, account)
+    conversation_id = await new_conversation(client, account)
+    fake_llm.responses = ["Persisted streamed answer. [1]"]
+
+    async with client.stream(
+        "POST",
+        f"/workspaces/{account['workspace_id']}/conversations/{conversation_id}/messages/stream",
+        json={"content": "remote work policy"},
+        headers=account["headers"],
+    ) as response:
+        async for _ in response.aiter_lines():
+            pass
+
+    messages = await client.get(
+        f"/workspaces/{account['workspace_id']}/conversations/{conversation_id}/messages",
+        headers=account["headers"],
+    )
+    roles = [m["role"] for m in messages.json()]
+    assert roles == ["user", "assistant"]
+    assert "Persisted streamed answer" in messages.json()[1]["content"]
+
+
+async def test_an_empty_message_is_rejected(client, account):
+    conversation_id = await new_conversation(client, account)
+    response = await client.post(
+        f"/workspaces/{account['workspace_id']}/conversations/{conversation_id}/messages",
+        json={"content": ""},
+        headers=account["headers"],
+    )
+    assert response.status_code == 422
