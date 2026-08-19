@@ -17,6 +17,10 @@ export default defineConfig({
       '/api': {
         target: process.env.VITE_API_PROXY_TARGET ?? 'http://localhost:8000',
         changeOrigin: true,
+        // Required for the live dictation socket. Without it the proxy
+        // forwards HTTP but silently drops the WebSocket upgrade, so
+        // `/api/v1/voice/stream` just hangs with no error anywhere.
+        ws: true,
       },
     },
   },

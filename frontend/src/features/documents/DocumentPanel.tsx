@@ -15,7 +15,9 @@ import {
   useDocuments,
   useReprocessDocument,
   useUploadDocument,
+  useVoiceCapabilities,
 } from '@/hooks/queries'
+import { RecordingUploader } from '@/features/voice/RecordingUploader'
 import { cn, formatBytes, formatRelativeTime } from '@/lib/utils'
 import { useWorkspaceStore } from '@/stores/workspace'
 import type { Document, DocumentStatus } from '@/api/types'
@@ -46,6 +48,7 @@ export function DocumentPanel({
   onSelectDocument: (document: Document) => void
 }) {
   const { data, isLoading } = useDocuments(workspaceId)
+  const { data: voice } = useVoiceCapabilities()
   const upload = useUploadDocument(workspaceId)
   const remove = useDeleteDocument(workspaceId)
   const reprocess = useReprocessDocument(workspaceId)
@@ -150,6 +153,15 @@ export function DocumentPanel({
         {uploadError && (
           <div className="mt-3">
             <ErrorNotice message={uploadError} />
+          </div>
+        )}
+
+        {voice?.enabled && (
+          <div className="mt-3 border-t border-border-subtle pt-3">
+            <p className="mb-2 text-xs font-medium text-ink-muted">
+              Recordings
+            </p>
+            <RecordingUploader workspaceId={workspaceId} />
           </div>
         )}
       </div>

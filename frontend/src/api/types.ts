@@ -171,6 +171,34 @@ export interface AnalysisRun {
   created_at: string
 }
 
+export type TranscriptStatus = 'pending' | 'processing' | 'ready' | 'failed'
+
+export interface VoiceRecording {
+  id: string
+  workspace_id: string
+  /** Set once the transcript has become a retrievable document. */
+  document_id: string | null
+  duration_seconds: number | null
+  transcript_status: TranscriptStatus
+  transcript: string | null
+  error_message: string | null
+  created_at: string
+  updated_at: string
+}
+
+export interface VoiceUploadResult {
+  recording: VoiceRecording
+  message: string
+}
+
+export interface VoiceCapabilities {
+  enabled: boolean
+  provider: string | null
+  live_transcription: boolean
+  max_audio_mb: number
+  max_stream_seconds: number
+}
+
 export interface ModelInfo {
   id: string
   provider: string

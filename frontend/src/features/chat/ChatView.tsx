@@ -13,7 +13,8 @@ import { useQueryClient } from '@tanstack/react-query'
 import { streamMessage, type StreamSource } from '@/api/stream'
 import type { Citation, Message } from '@/api/types'
 import { Badge, Button, EmptyState, ErrorNotice, Spinner } from '@/components/ui/primitives'
-import { queryKeys, useMessages } from '@/hooks/queries'
+import { queryKeys, useMessages, useVoiceCapabilities } from '@/hooks/queries'
+import { VoiceInput } from '@/features/voice/VoiceInput'
 import { cn } from '@/lib/utils'
 import { useWorkspaceStore } from '@/stores/workspace'
 
@@ -25,6 +26,7 @@ export function ChatView({
   conversationId: string | null
 }) {
   const { data: messages, isLoading } = useMessages(workspaceId, conversationId)
+  const { data: voice } = useVoiceCapabilities()
   const scopedDocumentIds = useWorkspaceStore((state) => state.scopedDocumentIds)
   const queryClient = useQueryClient()
 
@@ -193,6 +195,20 @@ export function ChatView({
               Send
             </Button>
           </div>
+
+          {/* Hidden entirely when the server has no STT configured, rather
+              than offered as a button that fails when pressed. */}
+          {voice?.live_transcription && (
+            <div className="mt-2">
+              <VoiceInput
+                workspaceId={workspaceId}
+                disabled={isStreaming}
+                onTranscript={(text) =>
+                  setDraft((current) => (current ? `${current} ${text}` : text))
+                }
+              />
+            </div>
+          )}
         </div>
       </div>
     </div>

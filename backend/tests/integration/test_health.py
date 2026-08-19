@@ -21,7 +21,26 @@ async def test_readiness_reports_each_dependency(client):
     assert body["status"] == "ok"
     assert body["checks"]["database"] == "ok"
     # Every dependency is named, whether configured or not.
-    assert {"database", "redis", "sandbox", "llm", "embeddings"} <= body["checks"].keys()
+    assert {
+        "database",
+        "redis",
+        "sandbox",
+        "voice",
+        "llm",
+        "embeddings",
+    } <= body["checks"].keys()
+
+
+async def test_readiness_stays_ok_when_optional_dependencies_are_absent(client, app):
+    """A missing sandbox or transcriber degrades a feature; it must not pull
+    the instance out of the load balancer."""
+    app.state.sandbox = None
+    app.state.transcriber = None
+
+    response = await client.get("/ready")
+    assert response.status_code == 200
+    assert response.json()["status"] == "ok"
+    assert response.json()["checks"]["voice"] == "disabled"
 
 
 async def test_health_endpoints_are_public(client):

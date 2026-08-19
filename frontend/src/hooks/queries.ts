@@ -20,6 +20,7 @@ import {
   modelApi,
   workspaceApi,
 } from '@/api/endpoints'
+import { voiceApi } from '@/api/voice'
 import type { Document, DocumentDetail } from '@/api/types'
 
 export const queryKeys = {
@@ -33,6 +34,8 @@ export const queryKeys = {
   conversations: (workspaceId: string) => ['conversations', workspaceId] as const,
   messages: (conversationId: string) => ['messages', conversationId] as const,
   analysisRuns: (documentId: string) => ['analysis-runs', documentId] as const,
+  voiceCapabilities: ['voice-capabilities'] as const,
+  voiceRecordings: (workspaceId: string) => ['voice', workspaceId] as const,
 }
 
 /** How often to re-check a document that is still being ingested. */
@@ -191,6 +194,32 @@ export function useAnalysisRuns(documentId: string | null) {
     queryKey: queryKeys.analysisRuns(documentId ?? ''),
     queryFn: () => analysisApi.listForDocument(documentId!),
     enabled: Boolean(documentId),
+  })
+}
+
+export function useVoiceCapabilities() {
+  return useQuery({
+    queryKey: queryKeys.voiceCapabilities,
+    queryFn: voiceApi.capabilities,
+    // Only changes when the server is reconfigured, and the answer decides
+    // whether the microphone is shown at all.
+    staleTime: 30 * 60 * 1000,
+  })
+}
+
+export function useVoiceRecordings(workspaceId: string | null) {
+  return useQuery({
+    queryKey: queryKeys.voiceRecordings(workspaceId ?? ''),
+    queryFn: () => voiceApi.list(workspaceId!),
+    enabled: Boolean(workspaceId),
+    // Transcription is asynchronous, so poll while anything is still in
+    // flight and stop as soon as everything has settled.
+    refetchInterval: (query) => {
+      const pending = (query.state.data ?? []).some(
+        (r) => r.transcript_status === 'pending' || r.transcript_status === 'processing',
+      )
+      return pending ? INGEST_POLL_MS : false
+    },
   })
 }
 

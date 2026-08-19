@@ -54,12 +54,16 @@ async def readiness(
     else:
         checks["sandbox"] = "disabled"
 
+    transcriber = getattr(request.app.state, "transcriber", None)
+    checks["voice"] = transcriber.name if transcriber else "disabled"
+
     checks["llm"] = "ok" if request.app.state.registry.all_models() else "no provider configured"
     checks["embeddings"] = request.app.state.embeddings.name
 
     # Only the database makes this instance unable to serve. A missing sandbox
-    # degrades analysis but leaves upload and Q&A working, so it must not pull
-    # the instance out of the load balancer.
+    # degrades analysis, and missing voice degrades dictation, but upload and
+    # Q&A keep working — neither should pull the instance out of the load
+    # balancer.
     ready = checks["database"] == "ok"
     if not ready:
         response.status_code = status.HTTP_503_SERVICE_UNAVAILABLE

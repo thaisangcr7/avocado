@@ -20,12 +20,12 @@ Full design: [`docs/architecture.md`](docs/architecture.md).
 |---|---|---|
 | 0 — Foundation | Clean-architecture skeleton, Docker, config, CI, auth | ✅ Done |
 | 1 — Ingestion + Analysis | Multimodal upload, RAG Q&A, sandboxed analysis engine, UI | ✅ Done |
-| 2 — Voice + multi-model | Deepgram STT, second provider, Auto mode | Auto mode + multi-provider done; voice not started |
+| 2 — Voice + multi-model | Deepgram STT, second provider, Auto mode | ✅ Done |
 | 3 — Multi-tenant | Org/team/workspace, RBAC, invites | Schema + isolation done; invite flow not started |
 | 4 — Team Mastermind | Projects/tasks, suggestions, task resume | Schema only |
 | 5 — Connectors + scale | Google Drive, observability, load test | Not started |
 
-**188 backend tests, 35 frontend tests.** Backend coverage 83%.
+**232 backend tests, 64 frontend tests.** Backend coverage 84%.
 
 ---
 
@@ -61,6 +61,11 @@ network they use their standard ports.
 To enable answer generation and analysis, set `ANTHROPIC_API_KEY` in `.env`.
 Without it, upload and retrieval still work and every generation endpoint
 returns a clear error rather than a fabricated answer.
+
+For voice, set `DEEPGRAM_API_KEY` and `STT_PROVIDER=deepgram`. Voice stays off
+unless *both* are set, and the client asks `GET /voice/capabilities` before
+showing a microphone — so an unconfigured server hides the feature rather than
+offering a button that fails when pressed.
 
 ### Running the backend directly
 
@@ -171,6 +176,18 @@ development.
 file mentions Q3 revenue?" works) and once as a structured table (so pandas has
 something to compute against).
 
+**A transcript is just a document.** Recorded audio is transcribed, written to
+object storage as text, given a `Document` row, and handed to the ordinary
+ingestion pipeline. A meeting recording ends up answerable through exactly the
+same retrieval path as an uploaded PDF, with no parallel code path to keep in
+sync. The audio stays referenced in metadata so a recording can be
+re-transcribed later without asking for it again.
+
+**The dictation socket authenticates from its first message**, not a query
+parameter. `WebSocket` cannot set an `Authorization` header, and a token in a
+URL lands in access logs, proxy history and browser history. Workspace access
+is re-checked on the socket exactly as it is on every HTTP route.
+
 **The model that answered is always recorded and shown.** `Auto` is a real
 user-facing choice — it routes cheap tasks to a fast model and analysis/code
 generation to the strongest available — and the response carries which model
@@ -180,7 +197,8 @@ actually ran, so Auto is never opaque.
 
 ## Known gaps
 
-- **Voice** (architecture §9) is modelled in the schema but not implemented.
+- **Text-to-speech** (architecture §9, listed as a stretch) is not built —
+  voice is input-only.
 - **Projects/tasks and proactive suggestions** (§11) exist as tables and enums
   only; no endpoints yet, by design — they depend on a real multi-user model.
 - **Invite flow** is missing: an organization currently has exactly the user who
@@ -190,6 +208,9 @@ actually ran, so Auto is never opaque.
   question with no answer on reload. The error is surfaced at request time.
 - **Scanned PDFs** are detected (`likely_scanned`) but the OCR fallback is not
   wired up; they currently ingest with no text.
+- **Live dictation is not persisted.** The socket exists so a question can be
+  spoken instead of typed; nothing is stored. Use the recorder for anything
+  that should become knowledge.
 - **`docker-compose` mounts the Docker socket into the API** so it can start
   sandbox containers as siblings. That grants the API control of the host
   daemon — fine locally, but a real deployment wants a remote sandbox service or
