@@ -146,6 +146,30 @@ async def test_an_empty_workspace_says_so_without_calling_the_model(client, acco
     assert len(fake_llm.calls) == before
 
 
+async def test_an_empty_workspace_answers_even_with_no_provider_configured(client, account, app):
+    """A fresh deployment has no LLM key yet, which is exactly when an honest
+    "nothing here" is most useful. Resolving a model first would 502 instead."""
+    from app.clients.llm.router import ModelRouter, ProviderRegistry
+
+    # A registry with nothing registered and no credentials configured.
+    empty = ProviderRegistry(app.state.settings)
+    app.state.registry = empty
+    app.state.model_router = ModelRouter(empty)
+
+    conversation_id = await new_conversation(client, account)
+    response = await client.post(
+        f"/workspaces/{account['workspace_id']}/conversations/{conversation_id}/messages",
+        json={"content": "anything at all"},
+        headers=account["headers"],
+    )
+
+    assert response.status_code == 201
+    answer = response.json()["assistant_message"]
+    assert "could not find" in answer["content"].lower()
+    # No model was involved, and the response says so rather than naming one.
+    assert answer["model_used"] is None
+
+
 async def test_the_first_exchange_names_the_thread(client, account, fake_llm):
     await seed_document(client, account)
     conversation_id = await new_conversation(client, account)

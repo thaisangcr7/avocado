@@ -56,6 +56,12 @@ paraphrase numbers.
 
 _CITATION_RE = re.compile(r"\[(\d{1,2})\]")
 
+NO_RESULTS_ANSWER = (
+    "I could not find anything in this workspace's documents that answers that. "
+    "If you expected a match, the source may still be processing, or it may not "
+    "have been uploaded yet."
+)
+
 
 class RAGService:
     def __init__(
@@ -130,29 +136,27 @@ class RAGService:
         history: list[Message],
         preferred_model: str | None,
         document_ids: list[uuid.UUID] | None = None,
-    ) -> tuple[str, list[Citation], str, int, int, int]:
-        """Answer a question. Returns (text, citations, model, in, out, ms)."""
+    ) -> tuple[str, list[Citation], str | None, int, int, int]:
+        """Answer a question. Returns (text, citations, model, in, out, ms).
+
+        `model` is None when no model was involved — an empty retrieval is
+        answered directly.
+        """
         hits = await self.retrieve(
             workspace_id=workspace_id, question=question, document_ids=document_ids
-        )
-
-        provider, spec = self._router.resolve(
-            task=TaskType.SYNTHESIS, preferred_model=preferred_model
         )
 
         if not hits:
             # Answered without a model call: there is nothing to ground an
             # answer in, and asking the model anyway invites an ungrounded one.
-            return (
-                "I could not find anything in this workspace's documents that "
-                "answers that. If you expected a match, the source may still be "
-                "processing, or it may not have been uploaded yet.",
-                [],
-                spec.id,
-                0,
-                0,
-                0,
-            )
+            # Resolving a provider first would make this path fail on a fresh
+            # deployment that has no LLM configured yet — precisely when an
+            # honest "nothing here" is most useful.
+            return (NO_RESULTS_ANSWER, [], None, 0, 0, 0)
+
+        provider, spec = self._router.resolve(
+            task=TaskType.SYNTHESIS, preferred_model=preferred_model
+        )
 
         context = self.build_context(hits)
         messages = [

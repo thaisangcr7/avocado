@@ -291,7 +291,7 @@ class ChatService:
         user_id: uuid.UUID,
         answer: str,
         citations: list,
-        model_used: str,
+        model_used: str | None,
         in_tokens: int,
         out_tokens: int,
         latency_ms: int,

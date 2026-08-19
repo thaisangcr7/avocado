@@ -29,13 +29,18 @@ class UsageService:
         workspace_id: uuid.UUID | None,
         user_id: uuid.UUID | None,
         endpoint: str,
-        model: str,
+        model: str | None,
         input_tokens: int,
         output_tokens: int,
         latency_ms: int,
         operation: str = "generate",
         success: bool = True,
     ) -> None:
+        if model is None:
+            # No model was involved (an empty retrieval answered directly).
+            # There is no cost to record.
+            return
+
         try:
             provider_name = "unknown"
             cost = 0.0
