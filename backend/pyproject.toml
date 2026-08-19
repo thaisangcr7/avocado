@@ -1,0 +1,35 @@
+[project]
+name = "avocado-backend"
+version = "0.1.0"
+description = "Avocado — team knowledge & analysis copilot (API)"
+requires-python = ">=3.12"
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+src = ["."]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "N", "UP", "B", "C4", "SIM", "ASYNC", "S"]
+ignore = [
+    "B008",   # FastAPI Depends() in defaults is the framework idiom
+    "S101",   # asserts are how pytest works
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = ["S105", "S106", "S311"]
+"alembic/*" = ["E501"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
+testpaths = ["tests"]
+filterwarnings = ["ignore::DeprecationWarning"]
+
+[tool.coverage.run]
+source = ["app"]
+omit = ["alembic/*"]
+# SQLAlchemy's asyncio support bridges into greenlets. Without this, coverage
+# loses the trace at the first `await` inside a repository call and reports
+# large swathes of exercised service code as unreached.
+concurrency = ["greenlet", "thread"]
