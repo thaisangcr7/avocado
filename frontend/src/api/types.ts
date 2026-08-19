@@ -1,0 +1,207 @@
+/**
+ * The API contract, mirroring the backend's Pydantic schemas.
+ *
+ * Hand-written rather than generated so the shapes stay readable, but they
+ * follow `backend/app/schemas/` exactly — when one changes, the other must.
+ */
+
+export type DocumentStatus = 'pending' | 'processing' | 'ready' | 'failed'
+export type DocumentType =
+  | 'pdf'
+  | 'docx'
+  | 'xlsx'
+  | 'csv'
+  | 'image'
+  | 'text'
+  | 'markdown'
+  | 'audio'
+export type AnalysisStatus =
+  | 'pending'
+  | 'generating'
+  | 'executing'
+  | 'succeeded'
+  | 'failed'
+export type MessageRole = 'user' | 'assistant' | 'system'
+
+export interface TokenResponse {
+  access_token: string
+  refresh_token: string
+  token_type: string
+  expires_in: number
+}
+
+export interface CurrentUser {
+  id: string
+  email: string
+  full_name: string | null
+  org_id: string
+  is_active: boolean
+  organization_name: string
+  workspace_ids: string[]
+}
+
+export interface Workspace {
+  id: string
+  team_id: string
+  name: string
+  description: string | null
+  /** null means Auto — the router picks per request. */
+  preferred_model: string | null
+  created_at: string
+  updated_at: string
+}
+
+export interface WorkspaceStats {
+  workspace_id: string
+  document_count: number
+  ready_document_count: number
+  chunk_count: number
+  conversation_count: number
+  analysis_run_count: number
+}
+
+export interface DocumentColumn {
+  name: string
+  dtype: string
+  null_count: number
+  sample_values: (string | null)[]
+}
+
+export interface DocumentTable {
+  id: string
+  document_id: string
+  name: string
+  sheet_index: number
+  row_count: number
+  column_count: number
+  columns: DocumentColumn[]
+}
+
+export interface Document {
+  id: string
+  workspace_id: string
+  filename: string
+  content_type: string
+  doc_type: DocumentType
+  size_bytes: number
+  status: DocumentStatus
+  error_message: string | null
+  page_count: number | null
+  chunk_count: number
+  doc_metadata: Record<string, unknown>
+  created_at: string
+  updated_at: string
+}
+
+export interface DocumentDetail extends Document {
+  tables: DocumentTable[]
+}
+
+export interface DocumentUploadResult {
+  document: Document
+  deduplicated: boolean
+}
+
+export interface Citation {
+  document_id: string
+  document_name: string
+  chunk_id: string
+  snippet: string
+  score: number
+  page: number | null
+  sheet: string | null
+  section: string | null
+}
+
+export interface Conversation {
+  id: string
+  workspace_id: string
+  user_id: string | null
+  task_id: string | null
+  title: string
+  created_at: string
+  updated_at: string
+}
+
+export interface Message {
+  id: string
+  conversation_id: string
+  role: MessageRole
+  content: string
+  citations: Citation[]
+  model_used: string | null
+  input_tokens: number | null
+  output_tokens: number | null
+  latency_ms: number | null
+  created_at: string
+}
+
+export interface ChatTurn {
+  user_message: Message
+  assistant_message: Message
+}
+
+export interface AnalysisTable {
+  name: string
+  columns: string[]
+  rows: unknown[][]
+  total_rows: number
+  truncated: boolean
+}
+
+export interface AnalysisRun {
+  id: string
+  workspace_id: string
+  document_id: string
+  question: string
+  status: AnalysisStatus
+  generated_code: string | null
+  code_explanation: string | null
+  result_summary: string | null
+  result_data: {
+    stdout?: string
+    tables?: AnalysisTable[]
+    scalars?: Record<string, unknown>
+  }
+  chart_url: string | null
+  error_message: string | null
+  model_used: string | null
+  execution_ms: number | null
+  attempt_count: number
+  created_at: string
+}
+
+export interface ModelInfo {
+  id: string
+  provider: string
+  display_name: string
+  context_window: number
+  max_output_tokens: number
+  input_cost_per_mtok: number
+  output_cost_per_mtok: number
+  supports_vision: boolean
+  tier: 'fast' | 'balanced' | 'frontier'
+}
+
+export interface ModelCatalog {
+  models: ModelInfo[]
+  default_provider: string
+  auto_available: boolean
+}
+
+export interface Paginated<T> {
+  items: T[]
+  next_cursor: string | null
+  has_more: boolean
+}
+
+/** RFC 9457 problem details — the only error shape the API returns. */
+export interface ProblemDetail {
+  type: string
+  title: string
+  status: number
+  detail: string
+  instance?: string
+  errors?: { field: string; message: string }[]
+  request_id?: string
+}

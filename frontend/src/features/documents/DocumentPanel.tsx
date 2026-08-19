@@ -1,0 +1,273 @@
+/**
+ * The document sidebar: upload, ingestion status, and retrieval scoping.
+ *
+ * Status is visible per document because ingestion is asynchronous — a user
+ * who uploads a large PDF and immediately asks about it needs to see *why*
+ * the answer is missing, not just get nothing.
+ */
+
+import { useCallback, useRef, useState, type DragEvent } from 'react'
+
+import { ApiError } from '@/api/client'
+import { Badge, Button, EmptyState, ErrorNotice, Spinner } from '@/components/ui/primitives'
+import {
+  useDeleteDocument,
+  useDocuments,
+  useReprocessDocument,
+  useUploadDocument,
+} from '@/hooks/queries'
+import { cn, formatBytes, formatRelativeTime } from '@/lib/utils'
+import { useWorkspaceStore } from '@/stores/workspace'
+import type { Document, DocumentStatus } from '@/api/types'
+
+const STATUS_TONE: Record<DocumentStatus, 'neutral' | 'success' | 'warning' | 'danger'> = {
+  pending: 'neutral',
+  processing: 'warning',
+  ready: 'success',
+  failed: 'danger',
+}
+
+const TYPE_ICON: Record<string, string> = {
+  pdf: '📕',
+  docx: '📘',
+  xlsx: '📊',
+  csv: '📊',
+  image: '🖼️',
+  text: '📄',
+  markdown: '📝',
+  audio: '🎙️',
+}
+
+export function DocumentPanel({
+  workspaceId,
+  onSelectDocument,
+}: {
+  workspaceId: string
+  onSelectDocument: (document: Document) => void
+}) {
+  const { data, isLoading } = useDocuments(workspaceId)
+  const upload = useUploadDocument(workspaceId)
+  const remove = useDeleteDocument(workspaceId)
+  const reprocess = useReprocessDocument(workspaceId)
+
+  const { scopedDocumentIds, toggleScopedDocument, clearScopedDocuments } =
+    useWorkspaceStore()
+
+  const [dragging, setDragging] = useState(false)
+  const [uploadError, setUploadError] = useState<string | null>(null)
+  const fileInput = useRef<HTMLInputElement>(null)
+
+  const documents = data?.items ?? []
+
+  const handleFiles = useCallback(
+    async (files: FileList | null) => {
+      if (!files?.length) return
+      setUploadError(null)
+      // Sequential rather than parallel: the server rate-limits, and a failure
+      // partway through is easier to explain when the order is deterministic.
+      for (const file of Array.from(files)) {
+        try {
+          await upload.mutateAsync(file)
+        } catch (error) {
+          setUploadError(
+            error instanceof ApiError
+              ? `${file.name}: ${error.message}`
+              : `${file.name}: upload failed.`,
+          )
+          break
+        }
+      }
+    },
+    [upload],
+  )
+
+  function handleDrop(event: DragEvent) {
+    event.preventDefault()
+    setDragging(false)
+    void handleFiles(event.dataTransfer.files)
+  }
+
+  return (
+    <div className="flex h-full flex-col">
+      <div className="flex items-center justify-between border-b border-border-subtle px-4 py-3">
+        <h2 className="text-sm font-semibold text-ink">Documents</h2>
+        {scopedDocumentIds.length > 0 && (
+          <button
+            onClick={clearScopedDocuments}
+            className="text-xs font-medium text-accent-strong hover:underline"
+          >
+            Clear scope ({scopedDocumentIds.length})
+          </button>
+        )}
+      </div>
+
+      <div className="p-3">
+        <div
+          onDragOver={(e) => {
+            e.preventDefault()
+            setDragging(true)
+          }}
+          onDragLeave={() => setDragging(false)}
+          onDrop={handleDrop}
+          className={cn(
+            'rounded-lg border-2 border-dashed px-4 py-6 text-center transition-colors',
+            dragging
+              ? 'border-accent bg-accent-soft'
+              : 'border-border-subtle bg-surface-sunken/50',
+          )}
+        >
+          <input
+            ref={fileInput}
+            type="file"
+            multiple
+            className="sr-only"
+            onChange={(e) => {
+              void handleFiles(e.target.files)
+              e.target.value = ''
+            }}
+            accept=".pdf,.docx,.xlsx,.csv,.txt,.md,.png,.jpg,.jpeg,.webp,.gif"
+          />
+          <p className="text-sm text-ink-muted">
+            Drop files here, or{' '}
+            <button
+              onClick={() => fileInput.current?.click()}
+              className="font-medium text-accent-strong hover:underline"
+            >
+              browse
+            </button>
+          </p>
+          <p className="mt-1 text-xs text-ink-muted/70">
+            PDF, Word, Excel, CSV, images, text
+          </p>
+          {upload.isPending && (
+            <div className="mt-3 flex items-center justify-center gap-2 text-xs text-ink-muted">
+              <Spinner className="size-3" />
+              Uploading…
+            </div>
+          )}
+        </div>
+
+        {uploadError && (
+          <div className="mt-3">
+            <ErrorNotice message={uploadError} />
+          </div>
+        )}
+      </div>
+
+      <div className="min-h-0 flex-1 overflow-y-auto px-3 pb-3">
+        {isLoading ? (
+          <div className="flex justify-center py-8">
+            <Spinner className="size-5 text-ink-muted" />
+          </div>
+        ) : documents.length === 0 ? (
+          <EmptyState
+            title="No documents yet"
+            description="Upload a spreadsheet to run analysis, or a document to ask questions about it."
+          />
+        ) : (
+          <ul className="space-y-1.5">
+            {documents.map((document) => (
+              <DocumentRow
+                key={document.id}
+                document={document}
+                scoped={scopedDocumentIds.includes(document.id)}
+                onToggleScope={() => toggleScopedDocument(document.id)}
+                onSelect={() => onSelectDocument(document)}
+                onDelete={() => remove.mutate(document.id)}
+                onReprocess={() => reprocess.mutate(document.id)}
+              />
+            ))}
+          </ul>
+        )}
+      </div>
+    </div>
+  )
+}
+
+function DocumentRow({
+  document,
+  scoped,
+  onToggleScope,
+  onSelect,
+  onDelete,
+  onReprocess,
+}: {
+  document: Document
+  scoped: boolean
+  onToggleScope: () => void
+  onSelect: () => void
+  onDelete: () => void
+  onReprocess: () => void
+}) {
+  const isAnalysable = document.doc_type === 'xlsx' || document.doc_type === 'csv'
+  const busy = document.status === 'pending' || document.status === 'processing'
+
+  return (
+    <li
+      className={cn(
+        'group rounded-lg border px-3 py-2.5 transition-colors',
+        scoped
+          ? 'border-accent bg-accent-soft'
+          : 'border-transparent bg-surface-sunken/60 hover:bg-surface-sunken',
+      )}
+    >
+      <div className="flex items-start gap-2.5">
+        <input
+          type="checkbox"
+          checked={scoped}
+          onChange={onToggleScope}
+          className="mt-1 size-3.5 accent-[var(--color-accent)]"
+          aria-label={`Limit questions to ${document.filename}`}
+        />
+
+        <span className="text-base leading-none" aria-hidden="true">
+          {TYPE_ICON[document.doc_type] ?? '📄'}
+        </span>
+
+        <div className="min-w-0 flex-1">
+          <p className="truncate text-sm font-medium text-ink" title={document.filename}>
+            {document.filename}
+          </p>
+
+          <div className="mt-1 flex flex-wrap items-center gap-1.5">
+            <Badge tone={STATUS_TONE[document.status]}>
+              {busy && <Spinner className="size-2.5" />}
+              {document.status}
+            </Badge>
+            <span className="text-xs text-ink-muted">
+              {formatBytes(document.size_bytes)}
+            </span>
+            {document.status === 'ready' && document.chunk_count > 0 && (
+              <span className="text-xs text-ink-muted">
+                {document.chunk_count} chunk{document.chunk_count === 1 ? '' : 's'}
+              </span>
+            )}
+            <span className="text-xs text-ink-muted/70">
+              {formatRelativeTime(document.created_at)}
+            </span>
+          </div>
+
+          {document.status === 'failed' && document.error_message && (
+            <p className="mt-1.5 text-xs text-danger">{document.error_message}</p>
+          )}
+
+          <div className="mt-2 flex gap-2 opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100">
+            {isAnalysable && document.status === 'ready' && (
+              <Button size="sm" variant="secondary" onClick={onSelect} className="h-6 px-2 text-xs">
+                Analyse
+              </Button>
+            )}
+            {document.status === 'failed' && (
+              <Button size="sm" variant="secondary" onClick={onReprocess} className="h-6 px-2 text-xs">
+                Retry
+              </Button>
+            )}
+            <Button size="sm" variant="ghost" onClick={onDelete} className="h-6 px-2 text-xs">
+              Delete
+            </Button>
+          </div>
+        </div>
+      </div>
+    </li>
+  )
+}
