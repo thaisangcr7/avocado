@@ -42,9 +42,14 @@ from app.db.base import Base  # noqa: E402
 from app.main import create_app  # noqa: E402
 from app.worker.dispatch import (  # noqa: E402
     build_ingest_scheduler,
+    build_transcribe_scheduler,
     drain_background_tasks,
 )
-from tests.fakes import FakeLLMProvider, FakeSandbox  # noqa: E402
+from tests.fakes import (  # noqa: E402
+    FakeLLMProvider,
+    FakeSandbox,
+    FakeTranscriptionClient,
+)
 
 
 @pytest.fixture(scope="session")
@@ -88,8 +93,44 @@ def fake_sandbox() -> FakeSandbox:
 
 
 @pytest.fixture
+def fake_stt() -> FakeTranscriptionClient:
+    return FakeTranscriptionClient()
+
+
+def apply_test_doubles(  # noqa: PLR0913
+    application, *, settings, session_factory, fake_llm, fake_sandbox, fake_stt, storage_path
+) -> None:
+    """Point the app at test doubles instead of real outbound clients.
+
+    Extracted because `TestClient(app)` as a context manager runs the real
+    lifespan, which rebuilds every client from configuration and discards these.
+    Anything opening a WebSocket has to re-apply them afterwards.
+    """
+    registry = ProviderRegistry(settings)
+    # The fake is registered through the registry's public seam, so `get()`,
+    # `available()` and `find_model()` behave exactly as in production — only
+    # the provider behind them is a double.
+    registry.register(fake_llm, make_default=True)
+
+    state = application.state
+    state.settings = settings
+    state.session_factory = session_factory
+    state.registry = registry
+    state.model_router = ModelRouter(registry)
+    state.storage = LocalStorageClient(storage_path)
+    state.embeddings = HashingEmbeddingProvider(settings.embedding_dim)
+    state.sandbox = fake_sandbox
+    state.sandbox_limits = build_limits(settings)
+    state.transcriber = fake_stt
+    state.redis = None
+    state.arq_pool = None
+    state.schedule_ingest = build_ingest_scheduler(application)
+    state.schedule_transcription = build_transcribe_scheduler(application)
+
+
+@pytest.fixture
 async def app(  # type: ignore[no-untyped-def]
-    settings, session_factory, fake_llm, fake_sandbox, tmp_path
+    settings, session_factory, fake_llm, fake_sandbox, fake_stt, tmp_path
 ):
     """The real application, with only its outbound clients replaced.
 
@@ -98,25 +139,15 @@ async def app(  # type: ignore[no-untyped-def]
     which is most of what an integration test is for.
     """
     application = create_app()
-
-    registry = ProviderRegistry(settings)
-    # The fake is registered through the registry's public seam, so `get()`,
-    # `available()` and `find_model()` all behave exactly as they do in
-    # production — only the provider behind them is a double.
-    registry.register(fake_llm, make_default=True)
-
-    state = application.state
-    state.settings = settings
-    state.session_factory = session_factory
-    state.registry = registry
-    state.model_router = ModelRouter(registry)
-    state.storage = LocalStorageClient(str(tmp_path / "storage"))
-    state.embeddings = HashingEmbeddingProvider(settings.embedding_dim)
-    state.sandbox = fake_sandbox
-    state.sandbox_limits = build_limits(settings)
-    state.redis = None
-    state.arq_pool = None
-    state.schedule_ingest = build_ingest_scheduler(application)
+    apply_test_doubles(
+        application,
+        settings=settings,
+        session_factory=session_factory,
+        fake_llm=fake_llm,
+        fake_sandbox=fake_sandbox,
+        fake_stt=fake_stt,
+        storage_path=str(tmp_path / "storage"),
+    )
 
     yield application
 

@@ -75,6 +75,10 @@ class ProviderRegistry:
         # provider added at runtime would use — either way it beats reaching
         # into the cache from outside.
         self._registered: dict[str, LLMProvider] = {}
+        # Providers that failed a startup probe. Ollama needs no credential, so
+        # configuration alone cannot tell us whether it is actually reachable;
+        # only asking it can.
+        self._unavailable: set[str] = set()
 
     @property
     def default_provider_name(self) -> str:
@@ -84,8 +88,18 @@ class ProviderRegistry:
         """Add a ready-made provider, bypassing credential-based construction."""
         self._registered[provider.name] = provider
         self._cache[provider.name] = provider
+        self._unavailable.discard(provider.name)
         if make_default:
             self._default_provider = provider.name
+
+    def mark_unavailable(self, name: str) -> None:
+        """Exclude a provider that failed its startup probe.
+
+        Reporting a provider as available when it cannot serve a request makes
+        `GET /models` and the readiness check lie, which is worse than offering
+        one fewer option.
+        """
+        self._unavailable.add(name)
 
     def get(self, name: str | None = None) -> LLMProvider:
         name = name or self.default_provider_name
@@ -116,7 +130,7 @@ class ProviderRegistry:
         # construction already succeeded.
         out: list[LLMProvider] = list(self._registered.values())
         for name in ("anthropic", "openai", "ollama"):
-            if name in self._registered:
+            if name in self._registered or name in self._unavailable:
                 continue
             if name == "anthropic" and not self._settings.anthropic_api_key:
                 continue

@@ -20,6 +20,7 @@ from app.clients.llm.base import (
     Usage,
 )
 from app.clients.sandbox.base import Sandbox, SandboxDataset, SandboxLimits, SandboxResult
+from app.clients.stt.base import Transcription, TranscriptionClient, TranscriptSegment
 
 FAKE_MODELS = [
     ModelSpec(
@@ -150,3 +151,73 @@ class FakeSandbox(Sandbox):
             ],
             execution_ms=42,
         )
+
+
+class FakeTranscriptionClient(TranscriptionClient):
+    """Returns scripted transcripts without touching a speech API.
+
+    Real STT is metered, non-deterministic, and needs audio fixtures; what is
+    under test here is how the application handles a transcript, not whether a
+    vendor can recognise speech.
+    """
+
+    name = "fake-stt"
+
+    def __init__(
+        self,
+        transcription: Transcription | None = None,
+        segments: list[TranscriptSegment] | None = None,
+        *,
+        error: Exception | None = None,
+    ) -> None:
+        self.transcription = transcription or Transcription(
+            text="Speaker 0: We agreed to ship the analysis engine first.",
+            duration_seconds=12.5,
+            confidence=0.98,
+            language="en",
+            model="fake-nova",
+            utterances=[
+                {
+                    "speaker": 0,
+                    "text": "We agreed to ship the analysis engine first.",
+                    "start": 0.0,
+                    "end": 12.5,
+                }
+            ],
+        )
+        self.segments = segments or [
+            TranscriptSegment(text="what is", is_final=False, confidence=0.6),
+            TranscriptSegment(text="what is the", is_final=False, confidence=0.7),
+            TranscriptSegment(
+                text="What is the remote work policy?", is_final=True, confidence=0.95
+            ),
+        ]
+        self.error = error
+        self.received_audio: list[bytes] = []
+        self.calls = 0
+
+    async def transcribe(
+        self, audio: bytes, *, content_type: str, language: str | None = None
+    ) -> Transcription:
+        self.calls += 1
+        self.received_audio.append(audio)
+        if self.error is not None:
+            raise self.error
+        return self.transcription
+
+    async def stream(
+        self,
+        audio_chunks,
+        *,
+        encoding: str | None = None,
+        sample_rate: int | None = None,
+        language: str | None = None,
+    ):
+        if self.error is not None:
+            raise self.error
+        # Drain the client's audio so the producing side completes, exactly as
+        # a real provider would.
+        async for chunk in audio_chunks:
+            self.received_audio.append(chunk)
+        for segment in self.segments:
+            yield segment

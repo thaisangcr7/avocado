@@ -20,13 +20,15 @@ from collections.abc import Awaitable, Callable
 from fastapi import FastAPI
 
 from app.core.logging import get_logger
-from app.worker.tasks import ingest_document
+from app.worker.tasks import ingest_document, transcribe_recording
 
 log = get_logger(__name__)
 
 INGEST_JOB = "arq_ingest_document"
+TRANSCRIBE_JOB = "arq_transcribe_recording"
 
 IngestScheduler = Callable[[uuid.UUID, uuid.UUID], Awaitable[None]]
+TranscribeScheduler = Callable[[uuid.UUID, uuid.UUID], Awaitable[None]]
 
 # Holds strong references to in-flight fallback tasks. Without this the event
 # loop only keeps a weak reference and a job can be garbage-collected mid-run.
@@ -57,6 +59,39 @@ def build_ingest_scheduler(app: FastAPI) -> IngestScheduler:
                 embeddings=app.state.embeddings,
                 router=app.state.model_router,
                 document_id=document_id,
+                workspace_id=workspace_id,
+            )
+        )
+        _background_tasks.add(task)
+        task.add_done_callback(_background_tasks.discard)
+
+    return schedule
+
+
+def build_transcribe_scheduler(app: FastAPI) -> TranscribeScheduler:
+    """Same two-path dispatch as ingestion: queue when there is one, in-process
+    otherwise so local development works without a worker."""
+
+    async def schedule(recording_id: uuid.UUID, workspace_id: uuid.UUID) -> None:
+        pool = getattr(app.state, "arq_pool", None)
+        if pool is not None:
+            try:
+                await pool.enqueue_job(TRANSCRIBE_JOB, str(recording_id), str(workspace_id))
+                log.info("transcription_enqueued", recording_id=str(recording_id))
+                return
+            except Exception:
+                log.warning("transcription_enqueue_failed", exc_info=True)
+
+        log.info("transcription_inprocess", recording_id=str(recording_id))
+        task = asyncio.create_task(
+            transcribe_recording(
+                session_factory=app.state.session_factory,
+                storage=app.state.storage,
+                embeddings=app.state.embeddings,
+                router=app.state.model_router,
+                transcriber=app.state.transcriber,
+                max_audio_bytes=app.state.settings.max_audio_bytes,
+                recording_id=recording_id,
                 workspace_id=workspace_id,
             )
         )

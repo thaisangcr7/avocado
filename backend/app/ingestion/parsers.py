@@ -287,4 +287,7 @@ SYNC_PARSERS: dict[DocumentType, Any] = {
     DocumentType.CSV: parse_csv,
     DocumentType.TEXT: parse_text,
     DocumentType.MARKDOWN: parse_markdown,
+    # A voice document's stored object is its transcript, so it parses as text.
+    # The audio stays referenced in metadata rather than being what is parsed.
+    DocumentType.AUDIO: parse_text,
 }

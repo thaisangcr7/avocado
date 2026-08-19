@@ -23,10 +23,15 @@ from app.clients.embeddings.providers import build_embedding_provider
 from app.clients.llm.router import ModelRouter, ProviderRegistry
 from app.clients.sandbox.factory import build_limits, build_sandbox
 from app.clients.storage.factory import build_storage_client
+from app.clients.stt.factory import build_transcription_client
 from app.core.config import Settings, get_settings
 from app.core.logging import configure_logging, get_logger
 from app.db.session import create_engine, create_session_factory
-from app.worker.dispatch import build_ingest_scheduler, drain_background_tasks
+from app.worker.dispatch import (
+    build_ingest_scheduler,
+    build_transcribe_scheduler,
+    drain_background_tasks,
+)
 
 log = get_logger(__name__)
 
@@ -41,6 +46,38 @@ it computed.
   code runs in an isolated sandbox, and you get both the answer and the program
   that produced it.
 """
+
+
+async def _probe_ollama(registry: ProviderRegistry) -> None:
+    """Discover which local models Ollama actually has.
+
+    Unlike the hosted providers, Ollama needs no credential, so configuration
+    cannot tell us whether it is running or what has been pulled — its model
+    list is empty until something asks. Without this probe its models never
+    appear in the catalogue, which is the whole point of wiring it in.
+    """
+    try:
+        provider = registry.get("ollama")
+    except Exception:
+        return
+
+    refresh = getattr(provider, "refresh_models", None)
+    if refresh is None:
+        return
+
+    try:
+        models = await refresh()
+    except Exception:
+        log.info("ollama_unreachable")
+        registry.mark_unavailable("ollama")
+        return
+
+    if models:
+        log.info("ollama_models_discovered", count=len(models))
+    else:
+        # Reachable but nothing pulled — offering it would produce a picker
+        # entry that cannot answer.
+        registry.mark_unavailable("ollama")
 
 
 async def _connect_redis(settings: Settings):  # type: ignore[no-untyped-def]
@@ -89,9 +126,12 @@ async def lifespan(app: FastAPI):  # type: ignore[no-untyped-def]
     app.state.embeddings = build_embedding_provider(settings)
     app.state.sandbox = build_sandbox(settings)
     app.state.sandbox_limits = build_limits(settings)
+    app.state.transcriber = build_transcription_client(settings)
+    await _probe_ollama(registry)
     app.state.redis = await _connect_redis(settings)
     app.state.arq_pool = await _connect_queue(settings)
     app.state.schedule_ingest = build_ingest_scheduler(app)
+    app.state.schedule_transcription = build_transcribe_scheduler(app)
 
     log.info(
         "app_started",
@@ -99,6 +139,7 @@ async def lifespan(app: FastAPI):  # type: ignore[no-untyped-def]
         storage=app.state.storage.name,
         embeddings=app.state.embeddings.name,
         sandbox=settings.sandbox_backend,
+        voice=app.state.transcriber.name if app.state.transcriber else "disabled",
         providers=[p.name for p in registry.available()],
     )
 

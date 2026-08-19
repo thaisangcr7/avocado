@@ -15,6 +15,7 @@ from app.repositories.tenancy import (
     WorkspaceRepository,
 )
 from app.repositories.usage import UsageRepository
+from app.repositories.voice import VoiceRecordingRepository
 
 __all__ = [
     "AnalysisRunRepository",
@@ -28,5 +29,6 @@ __all__ = [
     "TeamRepository",
     "UsageRepository",
     "UserRepository",
+    "VoiceRecordingRepository",
     "WorkspaceRepository",
 ]

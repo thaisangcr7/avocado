@@ -11,6 +11,7 @@ from app.api.v1 import (
     documents,
     health,
     models,
+    voice,
     workspaces,
 )
 
@@ -21,4 +22,5 @@ api_router.include_router(workspaces.router)
 api_router.include_router(documents.router)
 api_router.include_router(conversations.router)
 api_router.include_router(analysis.router)
+api_router.include_router(voice.router)
 api_router.include_router(models.router)

@@ -20,6 +20,7 @@ from app.clients.embeddings.base import EmbeddingProvider
 from app.clients.llm.router import ModelRouter, ProviderRegistry
 from app.clients.sandbox.base import Sandbox, SandboxLimits
 from app.clients.storage.base import StorageClient
+from app.clients.stt.base import TranscriptionClient
 from app.core.config import Settings, get_settings
 from app.core.errors import AuthenticationError
 from app.core.logging import user_id_var, workspace_id_var
@@ -40,6 +41,7 @@ from app.repositories.tenancy import (
     WorkspaceRepository,
 )
 from app.repositories.usage import UsageRepository
+from app.repositories.voice import VoiceRecordingRepository
 from app.services.analysis_service import AnalysisService
 from app.services.auth_service import AuthService
 from app.services.chat_service import ChatService
@@ -100,6 +102,10 @@ def get_sandbox_limits(request: Request) -> SandboxLimits:
     return request.app.state.sandbox_limits
 
 
+def get_transcriber(request: Request) -> TranscriptionClient | None:
+    return request.app.state.transcriber
+
+
 SessionDep = Annotated[AsyncSession, Depends(get_session)]
 SettingsDep = Annotated[Settings, Depends(get_config)]
 RegistryDep = Annotated[ProviderRegistry, Depends(get_registry)]
@@ -132,6 +138,7 @@ ConversationsDep = Annotated[ConversationRepository, Depends(_repo(ConversationR
 MessagesDep = Annotated[MessageRepository, Depends(_repo(MessageRepository))]
 RunsDep = Annotated[AnalysisRunRepository, Depends(_repo(AnalysisRunRepository))]
 UsageRepoDep = Annotated[UsageRepository, Depends(_repo(UsageRepository))]
+VoiceRecordingsDep = Annotated[VoiceRecordingRepository, Depends(_repo(VoiceRecordingRepository))]
 
 
 # --------------------------------------------------------------------------

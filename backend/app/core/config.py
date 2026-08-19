@@ -21,6 +21,7 @@ AppEnv = Literal["development", "test", "staging", "production"]
 StorageBackend = Literal["local", "s3"]
 EmbeddingProvider = Literal["voyage", "openai", "hash"]
 SandboxBackend = Literal["docker", "disabled"]
+SttProvider = Literal["deepgram", "disabled"]
 LLMProviderName = Literal["anthropic", "openai", "ollama"]
 
 
@@ -86,6 +87,16 @@ class Settings(BaseSettings):
     sandbox_max_output_bytes: int = Field(default=1_048_576, ge=1024)
     sandbox_pids_limit: int = 128
 
+    # --- Speech to text ------------------------------------------------
+    stt_provider: SttProvider = "disabled"
+    deepgram_api_key: str | None = None
+    deepgram_model: str = "nova-2"
+    # Recordings are far larger than documents, so they get their own ceiling.
+    max_audio_mb: int = Field(default=100, ge=1, le=1000)
+    # A live socket that is never closed by the client would otherwise hold a
+    # provider connection open indefinitely.
+    voice_stream_max_seconds: int = Field(default=300, ge=10, le=3600)
+
     # --- Uploads -------------------------------------------------------
     max_upload_mb: int = Field(default=25, ge=1, le=500)
 
@@ -104,6 +115,14 @@ class Settings(BaseSettings):
     @property
     def max_upload_bytes(self) -> int:
         return self.max_upload_mb * 1024 * 1024
+
+    @property
+    def max_audio_bytes(self) -> int:
+        return self.max_audio_mb * 1024 * 1024
+
+    @property
+    def voice_enabled(self) -> bool:
+        return self.stt_provider != "disabled" and bool(self.deepgram_api_key)
 
     @property
     def is_production(self) -> bool:
@@ -147,6 +166,8 @@ class Settings(BaseSettings):
             raise ValueError("EMBEDDING_PROVIDER=voyage requires VOYAGE_API_KEY.")
         if self.embedding_provider == "openai" and not self.openai_api_key:
             raise ValueError("EMBEDDING_PROVIDER=openai requires OPENAI_API_KEY.")
+        if self.stt_provider == "deepgram" and not self.deepgram_api_key:
+            raise ValueError("STT_PROVIDER=deepgram requires DEEPGRAM_API_KEY.")
         if self.storage_backend == "s3" and not (
             self.s3_access_key_id and self.s3_secret_access_key
         ):
