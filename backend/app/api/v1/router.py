@@ -10,7 +10,9 @@ from app.api.v1 import (
     conversations,
     documents,
     health,
+    invitations,
     models,
+    teams,
     voice,
     workspaces,
 )
@@ -18,6 +20,8 @@ from app.api.v1 import (
 api_router = APIRouter()
 api_router.include_router(health.router)
 api_router.include_router(auth.router)
+api_router.include_router(teams.router)
+api_router.include_router(invitations.router)
 api_router.include_router(workspaces.router)
 api_router.include_router(documents.router)
 api_router.include_router(conversations.router)

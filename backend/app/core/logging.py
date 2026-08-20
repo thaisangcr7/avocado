@@ -9,7 +9,9 @@ every call.
 from __future__ import annotations
 
 import logging
+import re
 import sys
+import uuid
 from contextvars import ContextVar
 
 import structlog
@@ -31,6 +33,38 @@ def _bind_request_context(_logger, _name, event_dict):  # type: ignore[no-untype
         if value is not None:
             event_dict[key] = value
     return event_dict
+
+
+# Paths whose next segment is a secret rather than an identifier. An
+# invitation token has to travel in a URL for the link to be openable, so the
+# only place it can be kept out of is the log — which is precisely where URLs
+# otherwise end up, along with proxy history and error trackers.
+_SECRET_PATH_SEGMENTS = (re.compile(r"^(?P<prefix>/api/v\d+/invitations/)(?P<secret>[^/]+)"),)
+
+REDACTED = "[redacted]"
+
+
+def _is_identifier(value: str) -> bool:
+    """Ids are safe to log; anything else in that position is a token."""
+    try:
+        uuid.UUID(value)
+    except ValueError:
+        return False
+    return True
+
+
+def redact_path(path: str) -> str:
+    """Mask credential-bearing URL segments before they are recorded.
+
+    Applied to every logged path and to the `instance` field of error
+    responses, so a token cannot reach a log file, an error tracker, or a
+    support ticket pasted from either.
+    """
+    for pattern in _SECRET_PATH_SEGMENTS:
+        match = pattern.match(path)
+        if match and not _is_identifier(match.group("secret")):
+            return path[: match.start("secret")] + REDACTED + path[match.end("secret") :]
+    return path
 
 
 def configure_logging(level: str = "INFO", json_output: bool = True) -> None:

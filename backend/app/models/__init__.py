@@ -17,6 +17,7 @@ from app.models.enums import (
     TaskStatus,
     TranscriptStatus,
 )
+from app.models.invitations import Invitation, InvitationStatus
 from app.models.projects import Project, ProjectMember, Task
 from app.models.tenancy import Organization, Team, TeamMembership, User, Workspace
 from app.models.usage import ApiUsageLog
@@ -28,6 +29,8 @@ __all__ = [
     "ApiUsageLog",
     "Conversation",
     "Document",
+    "Invitation",
+    "InvitationStatus",
     "DocumentChunk",
     "DocumentStatus",
     "DocumentTable",

@@ -105,6 +105,11 @@ class Settings(BaseSettings):
     rate_limit_requests: int = 120
     rate_limit_window_seconds: int = 60
 
+    # --- Public URLs ---------------------------------------------------
+    # Where the web app is reachable. Invitation links are built from this, so
+    # it has to be the address a recipient can actually open — not the API's.
+    public_web_url: str = "http://localhost:5173"
+
     # --- CORS ----------------------------------------------------------
     cors_origins: str = "http://localhost:5173,http://localhost:3000"
 

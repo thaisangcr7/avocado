@@ -7,6 +7,7 @@ import uuid
 from sqlalchemy import func, select
 from sqlalchemy.orm import selectinload
 
+from app.models.enums import Role
 from app.models.tenancy import Organization, Team, TeamMembership, User, Workspace
 from app.repositories.base import BaseRepository
 
@@ -43,6 +44,24 @@ class TeamRepository(BaseRepository[Team]):
         stmt = select(Team).where(Team.org_id == org_id).order_by(Team.name)
         return list((await self._session.execute(stmt)).scalars().all())
 
+    async def list_for_user(self, user_id: uuid.UUID) -> list[Team]:
+        """Teams the user actually belongs to."""
+        stmt = (
+            select(Team)
+            .join(TeamMembership, TeamMembership.team_id == Team.id)
+            .where(TeamMembership.user_id == user_id)
+            .order_by(Team.name)
+        )
+        return list((await self._session.execute(stmt)).scalars().unique().all())
+
+    async def get_by_name(self, org_id: uuid.UUID, name: str) -> Team | None:
+        stmt = select(Team).where(Team.org_id == org_id, Team.name == name)
+        return (await self._session.execute(stmt)).scalar_one_or_none()
+
+    async def count_workspaces(self, team_id: uuid.UUID) -> int:
+        stmt = select(func.count()).select_from(Workspace).where(Workspace.team_id == team_id)
+        return (await self._session.execute(stmt)).scalar_one()
+
 
 class MembershipRepository(BaseRepository[TeamMembership]):
     model = TeamMembership
@@ -59,6 +78,52 @@ class MembershipRepository(BaseRepository[TeamMembership]):
     async def list_for_user(self, user_id: uuid.UUID) -> list[TeamMembership]:
         stmt = select(TeamMembership).where(TeamMembership.user_id == user_id)
         return list((await self._session.execute(stmt)).scalars().all())
+
+    async def list_for_team(self, team_id: uuid.UUID) -> list[tuple[TeamMembership, User]]:
+        """Members of a team with their user rows, in one query.
+
+        Joined rather than fetched per membership: a member list is rendered
+        with names and emails, and N+1 lookups for it is the classic way a
+        cheap page becomes slow.
+        """
+        stmt = (
+            select(TeamMembership, User)
+            .join(User, User.id == TeamMembership.user_id)
+            .where(TeamMembership.team_id == team_id)
+            .order_by(User.email)
+        )
+        return [tuple(row) for row in (await self._session.execute(stmt)).all()]
+
+    async def count_for_team(self, team_id: uuid.UUID) -> int:
+        stmt = (
+            select(func.count())
+            .select_from(TeamMembership)
+            .where(TeamMembership.team_id == team_id)
+        )
+        return (await self._session.execute(stmt)).scalar_one()
+
+    async def count_role_in_org(self, org_id: uuid.UUID, role: Role) -> int:
+        """How many people hold a role across the whole organization.
+
+        Used to refuse removing or demoting the last org admin, which would
+        leave the organization unadministrable.
+        """
+        stmt = (
+            select(func.count(func.distinct(TeamMembership.user_id)))
+            .join(Team, Team.id == TeamMembership.team_id)
+            .where(Team.org_id == org_id, TeamMembership.role == role)
+        )
+        return (await self._session.execute(stmt)).scalar_one()
+
+    async def list_org_members(self, org_id: uuid.UUID) -> list[tuple[TeamMembership, User]]:
+        stmt = (
+            select(TeamMembership, User)
+            .join(User, User.id == TeamMembership.user_id)
+            .join(Team, Team.id == TeamMembership.team_id)
+            .where(Team.org_id == org_id)
+            .order_by(User.email)
+        )
+        return [tuple(row) for row in (await self._session.execute(stmt)).all()]
 
 
 class WorkspaceRepository(BaseRepository[Workspace]):

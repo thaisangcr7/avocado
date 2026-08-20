@@ -12,6 +12,7 @@ to the request it just made.
 
 from __future__ import annotations
 
+import logging
 import os
 import uuid
 from collections.abc import AsyncIterator
@@ -26,6 +27,11 @@ os.environ.setdefault("STORAGE_BACKEND", "local")
 os.environ.setdefault("SANDBOX_BACKEND", "disabled")
 os.environ.setdefault("RATE_LIMIT_ENABLED", "false")
 
+# httpx logs every request URL at INFO. That is noise in test output and, worse,
+# it puts credentials the application deliberately redacts back into the
+# captured logs, which makes leak assertions read as failures.
+logging.getLogger("httpx").setLevel(logging.WARNING)
+
 TEST_DATABASE_URL = os.environ.get(
     "TEST_DATABASE_URL",
     "postgresql+asyncpg://avocado:avocado@localhost:5434/avocado_test",
@@ -38,6 +44,7 @@ from app.clients.llm.router import ModelRouter, ProviderRegistry  # noqa: E402
 from app.clients.sandbox.factory import build_limits  # noqa: E402
 from app.clients.storage.local import LocalStorageClient  # noqa: E402
 from app.core.config import get_settings  # noqa: E402
+from app.core.logging import configure_logging  # noqa: E402
 from app.db.base import Base  # noqa: E402
 from app.main import create_app  # noqa: E402
 from app.worker.dispatch import (  # noqa: E402
@@ -50,6 +57,18 @@ from tests.fakes import (  # noqa: E402
     FakeSandbox,
     FakeTranscriptionClient,
 )
+
+
+@pytest.fixture(scope="session", autouse=True)
+def _configure_logging():
+    """Route logs through the stdlib exactly as the application does.
+
+    The `app` fixture deliberately skips lifespan, which is where
+    `configure_logging` normally runs. Unconfigured, structlog writes straight
+    to stdout and never reaches the logging module — so `caplog` sees nothing
+    and any assertion about what is or is not logged silently passes.
+    """
+    configure_logging("INFO", json_output=False)
 
 
 @pytest.fixture(scope="session")

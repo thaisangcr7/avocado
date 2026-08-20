@@ -10,12 +10,19 @@ from __future__ import annotations
 
 import uuid
 
-from sqlalchemy import Boolean, Enum, ForeignKey, String, UniqueConstraint
+from sqlalchemy import Boolean, Enum, ForeignKey, Index, String, UniqueConstraint, func
 from sqlalchemy.dialects.postgresql import UUID as PGUUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base, TimestampMixin, UUIDPrimaryKeyMixin
 from app.models.enums import Role
+
+
+def _email_col():
+    """Deferred column reference for the functional index below."""
+    from sqlalchemy import column
+
+    return column("email")
 
 
 def role_enum() -> Enum:
@@ -35,7 +42,19 @@ class Organization(Base, UUIDPrimaryKeyMixin, TimestampMixin):
 
 class User(Base, UUIDPrimaryKeyMixin, TimestampMixin):
     __tablename__ = "users"
-    __table_args__ = (UniqueConstraint("org_id", "email", name="uq_users_org_email"),)
+    __table_args__ = (
+        UniqueConstraint("org_id", "email", name="uq_users_org_email"),
+        # Email identifies an account globally and case-insensitively, because
+        # that is what login already assumes: it looks a user up by lowercased
+        # email with no organization, so two rows matching one address make
+        # login raise rather than authenticate. The per-org constraint above is
+        # kept as a narrower guard; this one is what actually holds.
+        #
+        # The consequence is deliberate: one account per email address across
+        # the whole system. Letting one person belong to two organizations with
+        # the same address would require choosing an organization at login.
+        Index("uq_users_email_lower", func.lower(_email_col()), unique=True),
+    )
 
     org_id: Mapped[uuid.UUID] = mapped_column(
         PGUUID(as_uuid=True), ForeignKey("organizations.id", ondelete="CASCADE"), index=True

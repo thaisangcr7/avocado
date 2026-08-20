@@ -17,7 +17,13 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 from starlette.middleware.base import BaseHTTPMiddleware
 
 from app.core.errors import AvocadoError, RateLimitedError
-from app.core.logging import get_logger, request_id_var, user_id_var, workspace_id_var
+from app.core.logging import (
+    get_logger,
+    redact_path,
+    request_id_var,
+    user_id_var,
+    workspace_id_var,
+)
 from app.schemas.common import ProblemDetail
 
 log = get_logger(__name__)
@@ -39,7 +45,7 @@ def _problem(
         title=title,
         status=status_code,
         detail=detail,
-        instance=str(request.url.path),
+        instance=redact_path(request.url.path),
         errors=errors,
         request_id=request_id_var.get(),
     )
@@ -69,7 +75,7 @@ class RequestContextMiddleware(BaseHTTPMiddleware):
             log.exception(
                 "request_failed",
                 method=request.method,
-                path=request.url.path,
+                path=redact_path(request.url.path),
                 duration_ms=int((time.perf_counter() - started) * 1000),
             )
             raise
@@ -85,7 +91,7 @@ class RequestContextMiddleware(BaseHTTPMiddleware):
             log.info(
                 "request",
                 method=request.method,
-                path=request.url.path,
+                path=redact_path(request.url.path),
                 status=response.status_code,
                 duration_ms=duration_ms,
             )
@@ -201,7 +207,7 @@ def register_exception_handlers(app: FastAPI) -> None:
     async def handle_unexpected(request: Request, exc: Exception) -> JSONResponse:
         # The detail is deliberately generic: an unhandled exception's message
         # can contain anything, including connection strings.
-        log.exception("unhandled_exception", path=request.url.path)
+        log.exception("unhandled_exception", path=redact_path(request.url.path))
         return _problem(
             request,
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,

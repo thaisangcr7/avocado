@@ -33,6 +33,7 @@ from app.repositories.documents import (
     DocumentRepository,
     DocumentTableRepository,
 )
+from app.repositories.invitations import InvitationRepository
 from app.repositories.tenancy import (
     MembershipRepository,
     OrganizationRepository,
@@ -46,8 +47,11 @@ from app.services.analysis_service import AnalysisService
 from app.services.auth_service import AuthService
 from app.services.chat_service import ChatService
 from app.services.ingestion_service import IngestionService
+from app.services.invitation_service import InvitationService
+from app.services.membership_service import MembershipService
 from app.services.model_service import ModelService
 from app.services.rag_service import RAGService
+from app.services.team_service import TeamService
 from app.services.usage_service import UsageService
 from app.services.workspace_service import WorkspaceService
 
@@ -139,6 +143,7 @@ MessagesDep = Annotated[MessageRepository, Depends(_repo(MessageRepository))]
 RunsDep = Annotated[AnalysisRunRepository, Depends(_repo(AnalysisRunRepository))]
 UsageRepoDep = Annotated[UsageRepository, Depends(_repo(UsageRepository))]
 VoiceRecordingsDep = Annotated[VoiceRecordingRepository, Depends(_repo(VoiceRecordingRepository))]
+InvitationsDep = Annotated[InvitationRepository, Depends(_repo(InvitationRepository))]
 
 
 # --------------------------------------------------------------------------
@@ -192,6 +197,57 @@ def get_auth_service(
         memberships=memberships,
         workspaces=workspaces,
     )
+
+
+def get_membership_service(
+    memberships: MembershipsDep, teams: TeamsDep, users: UsersDep
+) -> MembershipService:
+    return MembershipService(memberships=memberships, teams=teams, users=users)
+
+
+MembershipServiceDep = Annotated[MembershipService, Depends(get_membership_service)]
+
+
+def get_team_service(
+    teams: TeamsDep,
+    memberships: MembershipsDep,
+    users: UsersDep,
+    organizations: OrgsDep,
+    access: MembershipServiceDep,
+) -> TeamService:
+    return TeamService(
+        teams=teams,
+        memberships=memberships,
+        users=users,
+        organizations=organizations,
+        membership_service=access,
+    )
+
+
+TeamServiceDep = Annotated[TeamService, Depends(get_team_service)]
+
+
+def get_invitation_service(
+    settings: SettingsDep,
+    invitations: InvitationsDep,
+    teams: TeamsDep,
+    users: UsersDep,
+    memberships: MembershipsDep,
+    organizations: OrgsDep,
+    access: MembershipServiceDep,
+) -> InvitationService:
+    return InvitationService(
+        settings=settings,
+        invitations=invitations,
+        teams=teams,
+        users=users,
+        memberships=memberships,
+        organizations=organizations,
+        membership_service=access,
+    )
+
+
+InvitationServiceDep = Annotated[InvitationService, Depends(get_invitation_service)]
 
 
 def get_workspace_service(
