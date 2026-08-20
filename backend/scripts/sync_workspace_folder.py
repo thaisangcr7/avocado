@@ -19,6 +19,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from urllib import error as urlerror
 from urllib import request as urlrequest
+from urllib.parse import urlsplit
 
 DEFAULT_BASE_URL = os.environ.get("AVOCADO_API_BASE_URL", "http://127.0.0.1:8000")
 STATE_FILENAME = ".avocado-sync-state.json"
@@ -49,6 +50,9 @@ class ApiResponse:
 
 class ApiClient:
     def __init__(self, base_url: str) -> None:
+        scheme = urlsplit(base_url).scheme
+        if scheme not in {"http", "https"}:
+            raise ValueError(f"--base-url must be http(s), got scheme {scheme!r}.")
         self.base_url = base_url.rstrip("/")
 
     def request(self, method: str, path: str, **kwargs) -> ApiResponse:  # type: ignore[no-untyped-def]
@@ -62,7 +66,7 @@ class ApiClient:
             data, content_type = encode_multipart(files)
             headers.setdefault("Content-Type", content_type)
 
-        req = urlrequest.Request(
+        req = urlrequest.Request(  # noqa: S310 -- scheme checked in ApiClient.__init__
             f"{self.base_url}{path}",
             data=data,
             headers=headers,
@@ -70,7 +74,7 @@ class ApiClient:
         )
 
         try:
-            with urlrequest.urlopen(req, timeout=120) as response:
+            with urlrequest.urlopen(req, timeout=120) as response:  # noqa: S310 -- scheme checked in ApiClient.__init__
                 raw = response.read()
                 text = raw.decode()
                 return ApiResponse(
@@ -194,14 +198,16 @@ def as_relative_filename(root: Path, path: Path) -> str:
     return path.relative_to(root).as_posix()
 
 
-def request_json(client: ApiClient, method: str, path: str, *, expected: int | None = None, **kwargs):
+def request_json(
+    client: ApiClient, method: str, path: str, *, expected: int | None = None, **kwargs
+):
     response = client.request(method, path, **kwargs)
     if expected is not None and response.status_code != expected:
         raise RuntimeError(f"{method} {path} failed: {response.status_code} {response.text}")
     if response.status_code >= 400:
         raise RuntimeError(f"{method} {path} failed: {response.status_code} {response.text}")
     body = response.json()
-    if not isinstance(body, (dict, list)):
+    if not isinstance(body, dict | list):
         raise RuntimeError(f"{method} {path} returned non-JSON content.")
     return body
 
@@ -222,7 +228,9 @@ def auth_headers(client: ApiClient, email: str, password: str) -> dict[str, str]
     return {"Authorization": f"Bearer {token}"}
 
 
-def resolve_workspace_id(client: ApiClient, headers: dict[str, str], workspace_id: str | None, workspace_name: str | None) -> str:
+def resolve_workspace_id(
+    client: ApiClient, headers: dict[str, str], workspace_id: str | None, workspace_name: str | None
+) -> str:
     if workspace_id:
         return workspace_id
     if not workspace_name:
@@ -246,7 +254,9 @@ def list_documents(client: ApiClient, headers: dict[str, str], workspace_id: str
     cursor: str | None = None
     while True:
         suffix = f"?limit=100&cursor={cursor}" if cursor else "?limit=100"
-        page = request_json(client, "GET", f"/workspaces/{workspace_id}/documents{suffix}", headers=headers)
+        page = request_json(
+            client, "GET", f"/workspaces/{workspace_id}/documents{suffix}", headers=headers
+        )
         if not isinstance(page, dict):
             raise RuntimeError("Document list response was not JSON object.")
         batch = page.get("items")
@@ -263,7 +273,9 @@ def list_documents(client: ApiClient, headers: dict[str, str], workspace_id: str
     return items
 
 
-def wait_ready(client: ApiClient, headers: dict[str, str], document_id: str, timeout_seconds: int) -> str:
+def wait_ready(
+    client: ApiClient, headers: dict[str, str], document_id: str, timeout_seconds: int
+) -> str:
     deadline = time.time() + timeout_seconds
     while time.time() < deadline:
         response = client.get(f"/documents/{document_id}", headers=headers)
@@ -282,21 +294,44 @@ def wait_ready(client: ApiClient, headers: dict[str, str], document_id: str, tim
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("folder", help="Local folder to sync")
-    parser.add_argument("--base-url", default=DEFAULT_BASE_URL, help="Avocado base URL (with or without /api/v1)")
+    parser.add_argument(
+        "--base-url", default=DEFAULT_BASE_URL, help="Avocado base URL (with or without /api/v1)"
+    )
     parser.add_argument("--email", required=True, help="Avocado account email")
-    parser.add_argument("--password", help="Avocado account password (avoid in shared shell history)")
+    parser.add_argument(
+        "--password", help="Avocado account password (avoid in shared shell history)"
+    )
     parser.add_argument(
         "--password-env",
         default="AVOCADO_PASSWORD",
         help="Environment variable name that stores the account password",
     )
     parser.add_argument("--workspace-id", help="Target workspace id")
-    parser.add_argument("--workspace-name", help="Target workspace name (used when workspace-id is omitted)")
-    parser.add_argument("--state-file", help="Path for sync state JSON (default: <folder>/.avocado-sync-state.json)")
-    parser.add_argument("--delete-missing", action="store_true", help="Delete previously synced docs that no longer exist locally")
-    parser.add_argument("--wait-ready", action="store_true", help="Wait for each uploaded document to reach ready/failed")
-    parser.add_argument("--ready-timeout-seconds", type=int, default=120, help="Per-document wait timeout when --wait-ready is enabled")
-    parser.add_argument("--dry-run", action="store_true", help="Show actions without mutating remote documents")
+    parser.add_argument(
+        "--workspace-name", help="Target workspace name (used when workspace-id is omitted)"
+    )
+    parser.add_argument(
+        "--state-file", help="Path for sync state JSON (default: <folder>/.avocado-sync-state.json)"
+    )
+    parser.add_argument(
+        "--delete-missing",
+        action="store_true",
+        help="Delete previously synced docs that no longer exist locally",
+    )
+    parser.add_argument(
+        "--wait-ready",
+        action="store_true",
+        help="Wait for each uploaded document to reach ready/failed",
+    )
+    parser.add_argument(
+        "--ready-timeout-seconds",
+        type=int,
+        default=120,
+        help="Per-document wait timeout when --wait-ready is enabled",
+    )
+    parser.add_argument(
+        "--dry-run", action="store_true", help="Show actions without mutating remote documents"
+    )
     args = parser.parse_args()
 
     root = Path(args.folder).expanduser().resolve()
@@ -307,9 +342,14 @@ def main() -> None:
     if not password:
         password = getpass.getpass("Avocado password: ")
     if not password:
-        raise RuntimeError("A password is required. Use --password, set AVOCADO_PASSWORD, or enter it at the prompt.")
+        raise RuntimeError(
+            "A password is required. Use --password, set AVOCADO_PASSWORD, or "
+            "enter it at the prompt."
+        )
 
-    state_path = Path(args.state_file).expanduser().resolve() if args.state_file else root / STATE_FILENAME
+    state_path = (
+        Path(args.state_file).expanduser().resolve() if args.state_file else root / STATE_FILENAME
+    )
     state = load_state(state_path)
     managed_files = state.setdefault("managed_files", {})
     if not isinstance(managed_files, dict):
@@ -349,7 +389,7 @@ def main() -> None:
 
     delete_actions: list[tuple[str, str]] = []
     if args.delete_missing:
-        stale_filenames = [name for name in managed_files.keys() if name not in local_filenames]
+        stale_filenames = [name for name in managed_files if name not in local_filenames]
         for stale in stale_filenames:
             for document in remote_by_name.get(stale, []):
                 doc_id = document.get("id")
@@ -373,7 +413,9 @@ def main() -> None:
     for filename, doc_id in delete_actions:
         response = client.delete(f"/documents/{doc_id}", headers=headers)
         if response.status_code >= 400:
-            raise RuntimeError(f"Delete failed for {filename}: {response.status_code} {response.text}")
+            raise RuntimeError(
+                f"Delete failed for {filename}: {response.status_code} {response.text}"
+            )
         print(f"Deleted {filename}")
 
     for filename, path, digest in upload_actions:
@@ -383,7 +425,10 @@ def main() -> None:
             if isinstance(old_id, str):
                 response = client.delete(f"/documents/{old_id}", headers=headers)
                 if response.status_code >= 400:
-                    raise RuntimeError(f"Delete before upload failed for {filename}: {response.status_code} {response.text}")
+                    raise RuntimeError(
+                        f"Delete before upload failed for {filename}: "
+                        f"{response.status_code} {response.text}"
+                    )
 
         data = path.read_bytes()
         response = client.post(
@@ -392,7 +437,9 @@ def main() -> None:
             files={"file": (filename, io.BytesIO(data), guess_content_type(path))},
         )
         if response.status_code != 201:
-            raise RuntimeError(f"Upload failed for {filename}: {response.status_code} {response.text}")
+            raise RuntimeError(
+                f"Upload failed for {filename}: {response.status_code} {response.text}"
+            )
         body = response.json()
         if not isinstance(body, dict):
             raise RuntimeError(f"Upload response was not JSON for {filename}.")

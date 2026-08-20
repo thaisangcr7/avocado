@@ -20,14 +20,15 @@ import random
 import re
 import shutil
 import string
-import textwrap
 import subprocess
+import textwrap
 import uuid
 from dataclasses import dataclass
-from datetime import date, datetime, timedelta, timezone
+from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
 from urllib import error as urlerror
 from urllib import request as urlrequest
+from urllib.parse import urlsplit
 
 DEFAULT_BASE_URL = os.environ.get("AVOCADO_API_BASE_URL", "http://127.0.0.1:8000")
 DEFAULT_OUTPUT_DIR = Path(__file__).resolve().parents[1] / ".demo-data" / "latest"
@@ -59,8 +60,31 @@ class ApiResponse:
         return self._json
 
 
+def _send_request(req: urlrequest.Request) -> ApiResponse:
+    try:
+        with urlrequest.urlopen(req, timeout=120) as response:  # noqa: S310 -- scheme checked in ApiClient.__init__
+            raw = response.read()
+            text = raw.decode()
+            return ApiResponse(
+                status_code=response.status,
+                text=text,
+                _json=_decode_json(text, response.headers.get("Content-Type", "")),
+            )
+    except urlerror.HTTPError as exc:
+        raw = exc.read()
+        text = raw.decode() if raw else ""
+        return ApiResponse(
+            status_code=exc.code,
+            text=text,
+            _json=_decode_json(text, exc.headers.get("Content-Type", "") if exc.headers else ""),
+        )
+
+
 class ApiClient:
     def __init__(self, base_url: str) -> None:
+        scheme = urlsplit(base_url).scheme
+        if scheme not in {"http", "https"}:
+            raise ValueError(f"--base-url must be http(s), got scheme {scheme!r}.")
         self.base_url = base_url.rstrip("/")
 
     async def request(self, method: str, path: str, **kwargs) -> ApiResponse:  # type: ignore[no-untyped-def]
@@ -74,30 +98,14 @@ class ApiClient:
             data, content_type = _encode_multipart(files)
             headers.setdefault("Content-Type", content_type)
 
-        req = urlrequest.Request(
+        req = urlrequest.Request(  # noqa: S310 -- scheme checked in ApiClient.__init__
             f"{self.base_url}{path}",
             data=data,
             headers=headers,
             method=method,
         )
 
-        try:
-            with urlrequest.urlopen(req, timeout=120) as response:
-                raw = response.read()
-                text = raw.decode()
-                return ApiResponse(
-                    status_code=response.status,
-                    text=text,
-                    _json=_decode_json(text, response.headers.get("Content-Type", "")),
-                )
-        except urlerror.HTTPError as exc:
-            raw = exc.read()
-            text = raw.decode() if raw else ""
-            return ApiResponse(
-                status_code=exc.code,
-                text=text,
-                _json=_decode_json(text, exc.headers.get("Content-Type", "") if exc.headers else ""),
-            )
+        return await asyncio.to_thread(_send_request, req)
 
     async def get(self, path: str, **kwargs) -> ApiResponse:  # type: ignore[no-untyped-def]
         return await self.request("GET", path, **kwargs)
@@ -166,17 +174,24 @@ def build_policy_doc(workspace_name: str, subject: str, rng: random.Random) -> s
         [
             (
                 "Purpose",
-                f"This policy describes how the {workspace_name} team handles {subject.lower()} so the same answer is available to every member.",
+                f"This policy describes how the {workspace_name} team handles "
+                f"{subject.lower()} so the same answer is available to every member.",
             ),
             (
                 "Rules",
-                f"Requests that touch {subject.lower()} should be recorded in the workspace, approved by the owner or a team admin, and reviewed again after the change is complete.",
+                f"Requests that touch {subject.lower()} should be recorded in the "
+                f"workspace, approved by the owner or a team admin, and reviewed "
+                f"again after the change is complete.",
             ),
             (
                 "Examples",
-                f"A {subject.lower()} exception should include the requestor, the reason, the decision, and the follow-up date.",
+                f"A {subject.lower()} exception should include the requestor, the "
+                f"reason, the decision, and the follow-up date.",
             ),
-            ("Effective Date", f"This policy takes effect on {effective} and remains active until replaced."),
+            (
+                "Effective Date",
+                f"This policy takes effect on {effective} and remains active until replaced.",
+            ),
         ],
     )
 
@@ -188,7 +203,8 @@ def build_process_doc(workspace_name: str, process_name: str, rng: random.Random
         [
             (
                 "Overview",
-                f"The {process_name.lower()} process keeps the {workspace_name} workspace aligned when work moves from planning to execution.",
+                f"The {process_name.lower()} process keeps the {workspace_name} "
+                f"workspace aligned when work moves from planning to execution.",
             ),
             (
                 "Steps",
@@ -203,7 +219,8 @@ def build_process_doc(workspace_name: str, process_name: str, rng: random.Random
             ),
             (
                 "Notes",
-                "If the process stalls, record the reason in the workspace instead of relying on memory.",
+                "If the process stalls, record the reason in the workspace instead "
+                "of relying on memory.",
             ),
         ],
     )
@@ -214,27 +231,41 @@ def build_meeting_notes_doc(workspace_name: str, topic: str, rng: random.Random)
     return format_markdown(
         f"{topic} meeting notes",
         [
-            ("Attendees", f"{attendees} met in the {workspace_name} workspace to review the current plan."),
+            (
+                "Attendees",
+                f"{attendees} met in the {workspace_name} workspace to review the current plan.",
+            ),
             (
                 "Discussion",
-                f"The team discussed {topic.lower()}, the blocker, the delivery sequence, and what should be surfaced to the rest of the team.",
+                f"The team discussed {topic.lower()}, the blocker, the delivery "
+                f"sequence, and what should be surfaced to the rest of the team.",
             ),
-            ("Decisions", "Keep the scope, update the owner list, and add a short daily note until the next milestone is reached."),
-            ("Next Steps", "Send the recap, update the board, and make the decision visible in the workspace."),
+            (
+                "Decisions",
+                "Keep the scope, update the owner list, and add a short daily note "
+                "until the next milestone is reached.",
+            ),
+            (
+                "Next Steps",
+                "Send the recap, update the board, and make the decision visible in the workspace.",
+            ),
         ],
     )
 
 
 def build_context_note(workspace_name: str) -> str:
-    return textwrap.dedent(
-        f"""
+    return (
+        textwrap.dedent(
+            f"""
         {workspace_name} overview
 
         This workspace is intentionally full of mixed document types so search,
         suggestions, task resumption, and spreadsheet analysis can all be exercised
         against the same tenant context.
         """
-    ).strip() + "\n"
+        ).strip()
+        + "\n"
+    )
 
 
 def write_csv(rows: list[dict[str, object]], fieldnames: list[str]) -> bytes:
@@ -361,18 +392,32 @@ class WorkspaceBlueprint:
     populated: bool
 
 
-def build_files_for_workspace(blueprint: WorkspaceBlueprint, output_dir: Path, rows_per_csv: int) -> list[GeneratedFile]:
+def build_files_for_workspace(
+    blueprint: WorkspaceBlueprint, output_dir: Path, rows_per_csv: int
+) -> list[GeneratedFile]:
     if not blueprint.populated:
         return []
 
-    rng = random.Random(blueprint.key)
+    rng = random.Random(blueprint.key)  # noqa: S311 -- deterministic demo data, not security-sensitive
     docs_dir = output_dir / blueprint.key / "documents"
     docs_dir.mkdir(parents=True, exist_ok=True)
 
     documents: list[tuple[str, str, str]] = [
-        ("employee-handbook.md", "policy", build_policy_doc(blueprint.name, "Employee handbook", rng)),
-        ("incident-response.md", "process", build_process_doc(blueprint.name, "Incident response", rng)),
-        ("meeting-notes.md", "notes", build_meeting_notes_doc(blueprint.name, "Quarterly retrospective", rng)),
+        (
+            "employee-handbook.md",
+            "policy",
+            build_policy_doc(blueprint.name, "Employee handbook", rng),
+        ),
+        (
+            "incident-response.md",
+            "process",
+            build_process_doc(blueprint.name, "Incident response", rng),
+        ),
+        (
+            "meeting-notes.md",
+            "notes",
+            build_meeting_notes_doc(blueprint.name, "Quarterly retrospective", rng),
+        ),
         ("workspace-context.txt", "notes", build_context_note(blueprint.name)),
     ]
 
@@ -448,14 +493,16 @@ def _encode_multipart(files) -> tuple[bytes, str]:  # type: ignore[no-untyped-de
     return bytes(body), f"multipart/form-data; boundary={boundary}"
 
 
-async def request_json(client: ApiClient, method: str, path: str, *, expected: int | None = None, **kwargs):
+async def request_json(
+    client: ApiClient, method: str, path: str, *, expected: int | None = None, **kwargs
+):
     response = await client.request(method, path, **kwargs)
     if expected is not None and response.status_code != expected:
         raise RuntimeError(f"{method} {path} failed: {response.status_code} {response.text}")
     if response.status_code >= 400:
         raise RuntimeError(f"{method} {path} failed: {response.status_code} {response.text}")
     body = response.json()
-    if not isinstance(body, (dict, list)):
+    if not isinstance(body, dict | list):
         raise RuntimeError(f"{method} {path} returned non-JSON content.")
     return body
 
@@ -473,7 +520,9 @@ async def register_owner(client: ApiClient, email: str, password: str) -> dict:
             "organization_name": OWNER_ORG,
         },
     )
-    login = await request_json(client, "POST", "/auth/login", expected=200, json={"email": email, "password": password})
+    login = await request_json(
+        client, "POST", "/auth/login", expected=200, json={"email": email, "password": password}
+    )
     headers = {"Authorization": f"Bearer {login['access_token']}"}
     me = await request_json(client, "GET", "/auth/me", headers=headers)
     return {"email": email, "password": password, "headers": headers, "me": me, "tokens": login}
@@ -502,35 +551,55 @@ async def invite_collaborator(client: ApiClient, owner: dict, team_id: str) -> d
     )
     headers = {"Authorization": f"Bearer {accept['access_token']}"}
     me = await request_json(client, "GET", "/auth/me", headers=headers)
-    return {"email": email, "password": password, "headers": headers, "me": me, "invite": invite, "tokens": accept}
+    return {
+        "email": email,
+        "password": password,
+        "headers": headers,
+        "me": me,
+        "invite": invite,
+        "tokens": accept,
+    }
 
 
-async def create_workspace(client: ApiClient, owner: dict, team_id: str, name: str, description: str) -> dict:
+async def create_workspace(
+    client: ApiClient, owner: dict, team_id: str, name: str, description: str
+) -> dict:
     return await request_json(
         client,
         "POST",
         "/workspaces",
         expected=201,
         headers=owner["headers"],
-        json={"name": name, "description": description, "team_id": team_id, "preferred_model": None},
+        json={
+            "name": name,
+            "description": description,
+            "team_id": team_id,
+            "preferred_model": None,
+        },
     )
 
 
-async def upload_document(client: ApiClient, owner: dict, workspace_id: str, file: GeneratedFile) -> dict:
+async def upload_document(
+    client: ApiClient, owner: dict, workspace_id: str, file: GeneratedFile
+) -> dict:
     response = await client.post(
         f"/workspaces/{workspace_id}/documents",
         headers=owner["headers"],
         files={"file": (file.filename, io.BytesIO(file.data), file.content_type)},
     )
     if response.status_code != 201:
-        raise RuntimeError(f"Upload failed for {file.filename}: {response.status_code} {response.text}")
+        raise RuntimeError(
+            f"Upload failed for {file.filename}: {response.status_code} {response.text}"
+        )
     body = response.json()
     if not isinstance(body, dict):
         raise RuntimeError("Upload response was not JSON.")
     return body
 
 
-async def wait_for_document(client: ApiClient, owner: dict, document_id: str, attempts: int = 180) -> dict:
+async def wait_for_document(
+    client: ApiClient, owner: dict, document_id: str, attempts: int = 180
+) -> dict:
     for _ in range(attempts):
         response = await client.get(f"/documents/{document_id}", headers=owner["headers"])
         if response.status_code != 200:
@@ -589,7 +658,9 @@ async def create_task(
     )
 
 
-async def create_conversation(client: ApiClient, owner: dict, workspace_id: str, title: str) -> dict:
+async def create_conversation(
+    client: ApiClient, owner: dict, workspace_id: str, title: str
+) -> dict:
     return await request_json(
         client,
         "POST",
@@ -600,7 +671,9 @@ async def create_conversation(client: ApiClient, owner: dict, workspace_id: str,
     )
 
 
-async def ask_question(client: ApiClient, owner: dict, workspace_id: str, conversation_id: str, question: str) -> dict:
+async def ask_question(
+    client: ApiClient, owner: dict, workspace_id: str, conversation_id: str, question: str
+) -> dict:
     response = await client.post(
         f"/workspaces/{workspace_id}/conversations/{conversation_id}/messages",
         headers=owner["headers"],
@@ -625,9 +698,13 @@ def reset_local_database() -> None:
         capture_output=True,
         text=True,
     )
-    container_name = next((line.strip() for line in container_result.stdout.splitlines() if line.strip()), None)
+    container_name = next(
+        (line.strip() for line in container_result.stdout.splitlines() if line.strip()), None
+    )
     if container_name is None:
-        raise RuntimeError("Could not find the running avocado-db container. Start the compose stack first.")
+        raise RuntimeError(
+            "Could not find the running avocado-db container. Start the compose stack first."
+        )
 
     tables_result = subprocess.run(
         [
@@ -678,8 +755,14 @@ def reset_local_database() -> None:
 async def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--base-url", default=DEFAULT_BASE_URL, help="Avocado API base URL")
-    parser.add_argument("--output-dir", default=str(DEFAULT_OUTPUT_DIR), help="Directory for generated source files and manifest")
-    parser.add_argument("--rows-per-csv", type=int, default=800, help="Rows to generate for each sample CSV")
+    parser.add_argument(
+        "--output-dir",
+        default=str(DEFAULT_OUTPUT_DIR),
+        help="Directory for generated source files and manifest",
+    )
+    parser.add_argument(
+        "--rows-per-csv", type=int, default=800, help="Rows to generate for each sample CSV"
+    )
     parser.add_argument(
         "--reset",
         action="store_true",
@@ -697,9 +780,24 @@ async def main() -> None:
         reset_local_database()
 
     blueprints = [
-        WorkspaceBlueprint(slugify("Northwind HQ"), "Northwind HQ", "Operations workspace with policies and meeting notes.", True),
-        WorkspaceBlueprint(slugify("Northwind Finance"), "Northwind Finance", "Finance workspace with budget and forecast data.", True),
-        WorkspaceBlueprint(slugify("Northwind Sandbox"), "Northwind Sandbox", "Intentionally empty workspace for the no-results path.", False),
+        WorkspaceBlueprint(
+            slugify("Northwind HQ"),
+            "Northwind HQ",
+            "Operations workspace with policies and meeting notes.",
+            True,
+        ),
+        WorkspaceBlueprint(
+            slugify("Northwind Finance"),
+            "Northwind Finance",
+            "Finance workspace with budget and forecast data.",
+            True,
+        ),
+        WorkspaceBlueprint(
+            slugify("Northwind Sandbox"),
+            "Northwind Sandbox",
+            "Intentionally empty workspace for the no-results path.",
+            False,
+        ),
     ]
 
     files: list[GeneratedFile] = []
@@ -710,7 +808,7 @@ async def main() -> None:
     owner_password = strong_password()
 
     manifest: dict[str, object] = {
-        "generated_at": datetime.now(timezone.utc).isoformat(),
+        "generated_at": datetime.now(UTC).isoformat(),
         "base_url": base_url,
         "output_dir": str(output_dir),
         "owner": {"email": owner_email, "password": owner_password},
@@ -762,21 +860,31 @@ async def main() -> None:
         f"/workspaces/{default_workspace['id']}",
         expected=200,
         headers=owner["headers"],
-        json={"name": blueprints[0].name, "description": blueprints[0].description, "preferred_model": None},
+        json={
+            "name": blueprints[0].name,
+            "description": blueprints[0].description,
+            "preferred_model": None,
+        },
     )
     default_workspace.update({"name": blueprints[0].name, "description": blueprints[0].description})
     populated_workspaces = [default_workspace]
 
-    second_workspace = await create_workspace(client, owner, refreshed_team["id"], blueprints[1].name, blueprints[1].description)
+    second_workspace = await create_workspace(
+        client, owner, refreshed_team["id"], blueprints[1].name, blueprints[1].description
+    )
     populated_workspaces.append(second_workspace)
-    empty_workspace = await create_workspace(client, owner, refreshed_team["id"], blueprints[2].name, blueprints[2].description)
+    empty_workspace = await create_workspace(
+        client, owner, refreshed_team["id"], blueprints[2].name, blueprints[2].description
+    )
 
     collaborator = await invite_collaborator(client, owner, refreshed_team["id"])
     collaborator_id = collaborator["me"]["id"]
 
     uploaded_documents: list[dict[str, object]] = []
     for blueprint, workspace in zip(blueprints[:2], populated_workspaces, strict=True):
-        workspace_files = [generated for generated in files if generated.workspace_key == blueprint.key]
+        workspace_files = [
+            generated for generated in files if generated.workspace_key == blueprint.key
+        ]
         for file in workspace_files:
             uploaded = await upload_document(client, owner, workspace["id"], file)
             ready = await wait_for_document(client, owner, uploaded["document"]["id"])
@@ -833,10 +941,23 @@ async def main() -> None:
             )
             tasks.append(task)
 
-    empty_conversation = await create_conversation(client, owner, empty_workspace["id"], "Empty workspace smoke test")
-    no_result = await ask_question(client, owner, empty_workspace["id"], empty_conversation["id"], "What is the onboarding policy?")
+    empty_conversation = await create_conversation(
+        client, owner, empty_workspace["id"], "Empty workspace smoke test"
+    )
+    no_result = await ask_question(
+        client,
+        owner,
+        empty_workspace["id"],
+        empty_conversation["id"],
+        "What is the onboarding policy?",
+    )
 
-    stats = await request_json(client, "GET", f"/workspaces/{populated_workspaces[0]['id']}/stats", headers=owner["headers"])
+    stats = await request_json(
+        client,
+        "GET",
+        f"/workspaces/{populated_workspaces[0]['id']}/stats",
+        headers=owner["headers"],
+    )
 
     manifest.update(
         {
@@ -860,7 +981,9 @@ async def main() -> None:
         }
     )
 
-    build_manifest_path(output_dir).write_text(json.dumps(manifest, indent=2, sort_keys=True) + "\n")
+    build_manifest_path(output_dir).write_text(
+        json.dumps(manifest, indent=2, sort_keys=True) + "\n"
+    )
     print(f"Demo data created under {output_dir}")
     print(f"Owner: {manifest['owner']['email']}")
     print(f"Collaborator: {manifest['collaborator']['email']}")

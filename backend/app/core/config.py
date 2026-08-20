@@ -189,7 +189,9 @@ class Settings(BaseSettings):
             if parsed.scheme not in {"http", "https"} or not parsed.netloc:
                 raise ValueError("CORS_ORIGINS entries must be absolute http(s) origins.")
             if parsed.path not in {"", "/"} or parsed.params or parsed.query or parsed.fragment:
-                raise ValueError("CORS_ORIGINS entries must not include a path, query, or fragment.")
+                raise ValueError(
+                    "CORS_ORIGINS entries must not include a path, query, or fragment."
+                )
             canonical_origins.append(f"{parsed.scheme}://{parsed.netloc}")
 
         return ",".join(canonical_origins)

@@ -19,6 +19,10 @@ ignore = [
 [tool.ruff.lint.per-file-ignores]
 "tests/*" = ["S105", "S106", "S311"]
 "alembic/*" = ["E501"]
+# Operator-run local tooling, not shipped in the app image. Args are literals
+# or values the operator already controls (their own --base-url, their own
+# docker container), not attacker-supplied input.
+"scripts/*" = ["S603", "S607"]
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
