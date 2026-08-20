@@ -59,6 +59,8 @@ class MessageResponse(ApiModel):
     role: MessageRole
     content: str
     citations: list[dict] = []
+    # True when this records a failed generation rather than an answer.
+    failed: bool = False
     model_used: str | None
     input_tokens: int | None
     output_tokens: int | None

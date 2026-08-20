@@ -258,9 +258,6 @@ actually ran, so Auto is never opaque.
   in their suggestions the next time they look; nothing is pushed.
 - **Invitations are not emailed.** The API returns the link and the UI shows it
   once for the inviter to send; there is no mail transport wired up.
-- **A failed generation leaves an orphaned user message.** The question is
-  persisted before generation, so if the model call fails the thread shows the
-  question with no answer on reload. The error is surfaced at request time.
 - **Live dictation is not persisted.** The socket exists so a question can be
   spoken instead of typed; nothing is stored. Use the recorder for anything
   that should become knowledge.

@@ -32,6 +32,7 @@ const CITED_MESSAGE: Message = {
       section: null,
     },
   ],
+  failed: false,
   model_used: 'claude-opus-5',
   input_tokens: 900,
   output_tokens: 40,
@@ -45,6 +46,7 @@ const USER_MESSAGE: Message = {
   role: 'user',
   content: 'How many days can I work from home?',
   citations: [],
+  failed: false,
   model_used: null,
   input_tokens: null,
   output_tokens: null,
@@ -99,6 +101,21 @@ describe('ChatView', () => {
 
     await user.click(screen.getByRole('button', { name: /handbook\.pdf/i }))
     expect(screen.getByText(/up to three days per week/i)).toBeInTheDocument()
+  })
+
+  it('renders a failed turn as a failure, not as an answer', () => {
+    renderChat([
+      USER_MESSAGE,
+      {
+        ...CITED_MESSAGE,
+        content: 'No LLM provider is configured.',
+        citations: [],
+        failed: true,
+        model_used: null,
+      },
+    ])
+    expect(screen.getByText(/could not answer/i)).toBeInTheDocument()
+    expect(screen.getByText('No LLM provider is configured.')).toBeInTheDocument()
   })
 
   it('shows no source list when the answer cited nothing', () => {

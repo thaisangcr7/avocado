@@ -296,3 +296,50 @@ async def test_an_empty_message_is_rejected(client, account):
         headers=account["headers"],
     )
     assert response.status_code == 422
+
+
+async def test_a_failed_generation_is_recorded_in_the_thread(client, account, app):
+    """The user's turn genuinely happened, so the question stays. Without a
+    record beside it, a reload shows a question with no reply and no
+    explanation once the transient error notice is gone."""
+    from app.clients.llm.router import ModelRouter, ProviderRegistry
+
+    await seed_document(client, account)
+    conversation_id = await new_conversation(client, account)
+
+    # No provider configured, as on a deployment with no LLM key.
+    empty = ProviderRegistry(app.state.settings)
+    app.state.registry = empty
+    app.state.model_router = ModelRouter(empty)
+
+    response = await client.post(
+        f"/workspaces/{account['workspace_id']}/conversations/{conversation_id}/messages",
+        json={"content": "remote work policy"},
+        headers=account["headers"],
+    )
+    # The status code still reflects reality: the answer did not happen.
+    assert response.status_code == 502
+
+    messages = await client.get(
+        f"/workspaces/{account['workspace_id']}/conversations/{conversation_id}/messages",
+        headers=account["headers"],
+    )
+    roles = [(m["role"], m["failed"]) for m in messages.json()]
+    assert roles == [("user", False), ("assistant", True)]
+
+    failure = messages.json()[1]
+    assert "provider" in failure["content"].lower()
+    assert failure["model_used"] is None
+
+
+async def test_a_successful_turn_is_not_marked_failed(client, account):
+    await seed_document(client, account)
+    conversation_id = await new_conversation(client, account)
+
+    response = await client.post(
+        f"/workspaces/{account['workspace_id']}/conversations/{conversation_id}/messages",
+        json={"content": "remote work policy"},
+        headers=account["headers"],
+    )
+    assert response.status_code == 201
+    assert response.json()["assistant_message"]["failed"] is False

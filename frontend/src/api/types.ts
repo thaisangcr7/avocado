@@ -129,6 +129,8 @@ export interface Message {
   role: MessageRole
   content: string
   citations: Citation[]
+  /** True when this records a failed generation rather than an answer. */
+  failed: boolean
   model_used: string | null
   input_tokens: number | null
   output_tokens: number | null

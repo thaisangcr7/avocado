@@ -7,7 +7,7 @@ from collections.abc import AsyncIterator
 
 from app.clients.llm.base import ChatMessage as LLMMessage
 from app.clients.llm.router import ModelRouter, TaskType
-from app.core.errors import NotFoundError
+from app.core.errors import AvocadoError, NotFoundError
 from app.core.logging import get_logger
 from app.models.conversations import Conversation, Message
 from app.models.enums import MessageRole
@@ -121,13 +121,28 @@ class ChatService:
         )
         await self._messages.commit()
 
-        answer, citations, model_used, in_tokens, out_tokens, latency_ms = await self._rag.answer(
-            workspace_id=workspace_id,
-            question=payload.content,
-            history=history,
-            preferred_model=preferred_model,
-            document_ids=payload.document_ids or None,
-        )
+        try:
+            (
+                answer,
+                citations,
+                model_used,
+                in_tokens,
+                out_tokens,
+                latency_ms,
+            ) = await self._rag.answer(
+                workspace_id=workspace_id,
+                question=payload.content,
+                history=history,
+                preferred_model=preferred_model,
+                document_ids=payload.document_ids or None,
+            )
+        except AvocadoError as exc:
+            # The user's turn genuinely happened, so the question stays in the
+            # thread. Record the failure beside it, or a reload shows a
+            # question with no reply and no explanation once the transient
+            # error notice is gone.
+            await self._record_failure(conversation_id, workspace_id, exc.detail)
+            raise
 
         assistant_message = await self._messages.add(
             Message(
@@ -165,6 +180,20 @@ class ChatService:
             user_message=MessageResponse.model_validate(user_message),
             assistant_message=MessageResponse.model_validate(assistant_message),
         )
+
+    async def _record_failure(
+        self, conversation_id: uuid.UUID, workspace_id: uuid.UUID, detail: str
+    ) -> None:
+        await self._messages.add(
+            Message(
+                conversation_id=conversation_id,
+                workspace_id=workspace_id,
+                role=MessageRole.ASSISTANT,
+                content=detail,
+                failed=True,
+            )
+        )
+        await self._messages.commit()
 
     async def stream(
         self,

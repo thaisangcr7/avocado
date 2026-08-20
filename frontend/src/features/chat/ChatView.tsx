@@ -73,6 +73,7 @@ export function ChatView({
         role: 'user',
         content: question,
         citations: [],
+        failed: false,
         model_used: null,
         input_tokens: null,
         output_tokens: null,
@@ -233,13 +234,22 @@ function MessageBubble({ message }: { message: Message }) {
             'rounded-2xl px-4 py-3 text-sm leading-relaxed',
             isUser
               ? 'bg-accent text-white'
-              : 'border border-border-subtle bg-surface-raised text-ink',
+              : message.failed
+                ? // Rendered as what it is — a turn that did not produce an
+                  // answer — rather than as if the model had said this.
+                  'border border-danger/30 bg-danger-soft text-danger'
+                : 'border border-border-subtle bg-surface-raised text-ink',
           )}
         >
+          {message.failed && (
+            <p className="mb-1 text-xs font-medium uppercase tracking-wide">
+              Could not answer
+            </p>
+          )}
           <p className="whitespace-pre-wrap">{message.content}</p>
         </div>
 
-        {!isUser && (
+        {!isUser && !message.failed && (
           <div className="mt-2 space-y-2">
             {message.citations.length > 0 && (
               <CitationList citations={message.citations} />

@@ -5,7 +5,7 @@ from __future__ import annotations
 import uuid
 from typing import Any
 
-from sqlalchemy import Enum, ForeignKey, Index, Integer, String, Text
+from sqlalchemy import Boolean, Enum, ForeignKey, Index, Integer, String, Text, false
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.dialects.postgresql import UUID as PGUUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -60,6 +60,14 @@ class Message(Base, UUIDPrimaryKeyMixin, TimestampMixin):
     # [{document_id, document_name, chunk_id, snippet, page, score}] — the
     # grounding for an assistant answer, rendered as clickable sources.
     citations: Mapped[list[dict[str, Any]]] = mapped_column(JSONB, nullable=False, default=list)
+
+    # True when generation failed and this message records that rather than an
+    # answer. The user's turn genuinely happened, so the question stays in the
+    # thread; without this the thread shows a question with no reply and no
+    # explanation once the transient error notice is gone.
+    failed: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default=false()
+    )
 
     # Which model actually answered. Surfaced in the UI so a user on Auto is
     # never left guessing (architecture §10).
