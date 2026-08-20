@@ -1,7 +1,12 @@
 import { defineConfig } from 'vitest/config'
 import react from '@vitejs/plugin-react'
 import tailwindcss from '@tailwindcss/vite'
+import fs from 'node:fs'
 import path from 'node:path'
+
+const defaultProxyTarget = fs.existsSync('/.dockerenv')
+  ? 'http://api:8000'
+  : 'http://localhost:8000'
 
 export default defineConfig({
   plugins: [react(), tailwindcss()],
@@ -15,7 +20,7 @@ export default defineConfig({
     // same way locally as behind a shared domain in production.
     proxy: {
       '/api': {
-        target: process.env.VITE_API_PROXY_TARGET ?? 'http://localhost:8000',
+        target: process.env.VITE_API_PROXY_TARGET ?? defaultProxyTarget,
         changeOrigin: true,
         // Required for the live dictation socket. Without it the proxy
         // forwards HTTP but silently drops the WebSocket upgrade, so
