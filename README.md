@@ -21,7 +21,7 @@ Full design: [`docs/architecture.md`](docs/architecture.md).
 | 0 — Foundation | Clean-architecture skeleton, Docker, config, CI, auth | ✅ Done |
 | 1 — Ingestion + Analysis | Multimodal upload, RAG Q&A, sandboxed analysis engine, UI | ✅ Done |
 | 2 — Voice + multi-model | Deepgram STT, second provider, Auto mode | ✅ Done |
-| 3 — Multi-tenant | Org/team/workspace, RBAC, invites | Schema + isolation done; invite flow not started |
+| 3 — Multi-tenant | Org/team/workspace, RBAC, invites | Schema + isolation done; invite flow done |
 | 4 — Team Mastermind | Projects/tasks, suggestions, task resume, knowledge map | ✅ Done |
 | 5 — Connectors + scale | Google Drive, observability, load test | Not started |
 
@@ -73,6 +73,19 @@ For voice, set `DEEPGRAM_API_KEY` and `STT_PROVIDER=deepgram`. Voice stays off
 unless *both* are set, and the client asks `GET /voice/capabilities` before
 showing a microphone — so an unconfigured server hides the feature rather than
 offering a button that fails when pressed.
+
+### Generate demo data
+
+Use the seed script to create a realistic workspace, extra collaborators,
+multiple projects and tasks, and a large document set for testing:
+
+```bash
+python backend/scripts/generate_demo_data.py --base-url http://localhost:8000
+```
+
+It writes the source files and a manifest under `backend/.demo-data/`. One
+workspace is intentionally left empty so you can see the honest no-results
+response before you upload anything there.
 
 ### Enabling row-level security
 

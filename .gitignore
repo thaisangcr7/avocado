@@ -26,6 +26,9 @@ dist/
 .localstorage/
 backend/.localstorage/
 
+# Generated demo data and manifests
+backend/.demo-data/
+
 # OS / editor
 .DS_Store
 .idea/
