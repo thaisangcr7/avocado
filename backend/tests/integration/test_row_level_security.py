@@ -48,7 +48,9 @@ async def restricted(engine):  # type: ignore[no-untyped-def]
     admin_url = os.environ["DATABASE_URL"]
 
     async with engine.begin() as connection:
-        await connection.exec_driver_sql(
+        # Interpolated identifiers only, all module constants — a role name and
+        # table names cannot be bind parameters in DDL.
+        await connection.exec_driver_sql(  # noqa: S608
             f"""
             DO $$
             BEGIN
@@ -262,5 +264,7 @@ async def test_every_policed_table_is_scoped(restricted, two_tenants, table):
 
     clear_identity()
     async with factory() as session:
-        count = (await session.execute(text(f"SELECT count(*) FROM {table}"))).scalar_one()
+        # `table` comes from the parametrize list above, not from input.
+        statement = text(f"SELECT count(*) FROM {table}")  # noqa: S608
+        count = (await session.execute(statement)).scalar_one()
     assert count == 0, f"{table} returned rows with no identity set"
