@@ -22,10 +22,10 @@ Full design: [`docs/architecture.md`](docs/architecture.md).
 | 1 — Ingestion + Analysis | Multimodal upload, RAG Q&A, sandboxed analysis engine, UI | ✅ Done |
 | 2 — Voice + multi-model | Deepgram STT, second provider, Auto mode | ✅ Done |
 | 3 — Multi-tenant | Org/team/workspace, RBAC, invites | Schema + isolation done; invite flow not started |
-| 4 — Team Mastermind | Projects/tasks, suggestions, task resume | Schema only |
+| 4 — Team Mastermind | Projects/tasks, suggestions, task resume, knowledge map | ✅ Done |
 | 5 — Connectors + scale | Google Drive, observability, load test | Not started |
 
-**298 backend tests, 82 frontend tests.** Backend coverage 86%.
+**345 backend tests, 96 frontend tests.** Backend coverage 87%.
 
 ---
 
@@ -202,6 +202,22 @@ rather than authenticate. The schema now enforces what the code assumed. The
 tradeoff is deliberate: one person cannot belong to two organizations with the
 same address — that would require choosing an organization at login.
 
+**Task visibility is not document visibility.** Everyone in a workspace can
+read every document, but a task assigned to one person is not workspace-public
+just because it lives in a shared workspace. A task is visible to its assignee,
+to members of its project, to team admins, and to the whole workspace only when
+the project has opted in. That rule is a SQL predicate every task query
+applies — filtering in Python after loading would mean the rows had already
+crossed the boundary, and a query that forgot the filter would leak silently.
+
+**Suggestions are a digest, not a record.** Nothing is persisted. The facts —
+what is overdue, what is new, what was left mid-question — are computed
+exactly, because a model would only add a chance of being wrong about them. The
+model's job is phrasing and ordering, and a rewrite that changes the number of
+nudges is rejected wholesale: a lost deadline is worse than an unpolished
+sentence. Suggestion ids are content hashes, so a client-side dismissal
+survives regeneration without the server storing one.
+
 **The dictation socket authenticates from its first message**, not a query
 parameter. `WebSocket` cannot set an `Authorization` header, and a token in a
 URL lands in access logs, proxy history and browser history. Workspace access
@@ -224,10 +240,14 @@ actually ran, so Auto is never opaque.
   pooling it needs a per-transaction session variable set on every request and
   on every worker job, and a partial implementation gives the appearance of
   defence in depth without the substance.
+- **Document supersession is represented but not derived.** A newer policy can
+  point at the one it replaces, and reclassification bumps a version, but
+  automatically *detecting* that one document supersedes another needs identity
+  resolution across documents and is not attempted.
+- **Task assignment has no notification.** Assigning work to someone surfaces
+  in their suggestions the next time they look; nothing is pushed.
 - **Invitations are not emailed.** The API returns the link and the UI shows it
   once for the inviter to send; there is no mail transport wired up.
-- **Projects/tasks and proactive suggestions** (§11) exist as tables and enums
-  only; no endpoints yet, by design — they depend on a real multi-user model.
 - **A failed generation leaves an orphaned user message.** The question is
   persisted before generation, so if the model call fails the thread shows the
   question with no answer on reload. The error is surfaced at request time.

@@ -9,6 +9,7 @@ import {
   useMutation,
   useQuery,
   useQueryClient,
+  type QueryClient,
   type UseQueryOptions,
 } from '@tanstack/react-query'
 
@@ -18,12 +19,24 @@ import {
   conversationApi,
   documentApi,
   invitationApi,
+  knowledgeApi,
   modelApi,
+  projectApi,
+  suggestionApi,
+  taskApi,
   teamApi,
   workspaceApi,
 } from '@/api/endpoints'
 import { voiceApi } from '@/api/voice'
-import type { Document, DocumentDetail, Role } from '@/api/types'
+import type {
+  Document,
+  DocumentDetail,
+  DocumentKind,
+  ProjectStatus,
+  ProjectVisibility,
+  Role,
+  TaskStatus,
+} from '@/api/types'
 
 export const queryKeys = {
   me: ['me'] as const,
@@ -42,6 +55,12 @@ export const queryKeys = {
   team: (id: string) => ['teams', id] as const,
   teamMembers: (id: string) => ['teams', id, 'members'] as const,
   invitations: (teamId: string) => ['teams', teamId, 'invitations'] as const,
+  projects: (workspaceId: string) => ['projects', workspaceId] as const,
+  project: (workspaceId: string, id: string) => ['projects', workspaceId, id] as const,
+  tasks: (workspaceId: string) => ['tasks', workspaceId] as const,
+  taskResume: (workspaceId: string, id: string) => ['tasks', workspaceId, id, 'resume'] as const,
+  suggestions: (workspaceId: string) => ['suggestions', workspaceId] as const,
+  knowledge: (workspaceId: string) => ['knowledge', workspaceId] as const,
   voiceCapabilities: ['voice-capabilities'] as const,
   voiceRecordings: (workspaceId: string) => ['voice', workspaceId] as const,
 }
@@ -292,6 +311,137 @@ export function useRevokeInvitation(teamId: string) {
     mutationFn: invitationApi.revoke,
     onSuccess: () =>
       queryClient.invalidateQueries({ queryKey: queryKeys.invitations(teamId) }),
+  })
+}
+
+export function useProjects(workspaceId: string | null) {
+  return useQuery({
+    queryKey: queryKeys.projects(workspaceId ?? ''),
+    queryFn: () => projectApi.list(workspaceId!),
+    enabled: Boolean(workspaceId),
+  })
+}
+
+export function useCreateProject(workspaceId: string) {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (payload: {
+      name: string
+      goal?: string
+      visibility?: ProjectVisibility
+    }) => projectApi.create(workspaceId, payload),
+    onSuccess: () =>
+      queryClient.invalidateQueries({ queryKey: queryKeys.projects(workspaceId) }),
+  })
+}
+
+export function useUpdateProject(workspaceId: string) {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: ({
+      projectId,
+      ...payload
+    }: {
+      projectId: string
+      name?: string
+      status?: ProjectStatus
+      visibility?: ProjectVisibility
+    }) => projectApi.update(workspaceId, projectId, payload),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.projects(workspaceId) })
+      // Changing visibility changes which tasks the caller can see.
+      queryClient.invalidateQueries({ queryKey: queryKeys.tasks(workspaceId) })
+    },
+  })
+}
+
+export function useTasks(
+  workspaceId: string | null,
+  filters: { project_id?: string; assignee_id?: string } = {},
+) {
+  return useQuery({
+    queryKey: [...queryKeys.tasks(workspaceId ?? ''), filters] as const,
+    queryFn: () => taskApi.list(workspaceId!, filters),
+    enabled: Boolean(workspaceId),
+  })
+}
+
+export function useCreateTask(workspaceId: string) {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: ({
+      projectId,
+      ...payload
+    }: {
+      projectId: string
+      title: string
+      assignee_id?: string | null
+      due_date?: string | null
+    }) => taskApi.create(workspaceId, projectId, payload),
+    onSuccess: () => invalidateTaskViews(queryClient, workspaceId),
+  })
+}
+
+export function useUpdateTask(workspaceId: string) {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: ({
+      taskId,
+      ...payload
+    }: {
+      taskId: string
+      title?: string
+      status?: TaskStatus
+      assignee_id?: string | null
+      due_date?: string | null
+    }) => taskApi.update(workspaceId, taskId, payload),
+    onSuccess: () => invalidateTaskViews(queryClient, workspaceId),
+  })
+}
+
+export function useDeleteTask(workspaceId: string) {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (taskId: string) => taskApi.remove(workspaceId, taskId),
+    onSuccess: () => invalidateTaskViews(queryClient, workspaceId),
+  })
+}
+
+/** Completing a task also changes the suggestions, so both are refreshed. */
+function invalidateTaskViews(queryClient: QueryClient, workspaceId: string) {
+  queryClient.invalidateQueries({ queryKey: queryKeys.tasks(workspaceId) })
+  queryClient.invalidateQueries({ queryKey: queryKeys.projects(workspaceId) })
+  queryClient.invalidateQueries({ queryKey: queryKeys.suggestions(workspaceId) })
+}
+
+export function useTaskResume(workspaceId: string | null, taskId: string | null) {
+  return useQuery({
+    queryKey: queryKeys.taskResume(workspaceId ?? '', taskId ?? ''),
+    queryFn: () => taskApi.resume(workspaceId!, taskId!),
+    enabled: Boolean(workspaceId && taskId),
+    // The summary costs a model call, so it is not re-fetched on every mount.
+    staleTime: 5 * 60 * 1000,
+  })
+}
+
+export function useSuggestions(workspaceId: string | null) {
+  return useQuery({
+    queryKey: queryKeys.suggestions(workspaceId ?? ''),
+    queryFn: () => suggestionApi.get(workspaceId!),
+    enabled: Boolean(workspaceId),
+    // The server caches these; asking more often would only recompute them.
+    staleTime: 5 * 60 * 1000,
+  })
+}
+
+export function useKnowledgeMap(
+  workspaceId: string | null,
+  filters: { kind?: DocumentKind; topic?: string } = {},
+) {
+  return useQuery({
+    queryKey: [...queryKeys.knowledge(workspaceId ?? ''), filters] as const,
+    queryFn: () => knowledgeApi.map(workspaceId!, filters),
+    enabled: Boolean(workspaceId),
   })
 }
 

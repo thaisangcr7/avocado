@@ -8,7 +8,17 @@ import type {
   InvitationPreview,
   Member,
   Organization,
+  DocumentKind,
+  KnowledgeMap,
+  Project,
+  ProjectDetail,
+  ProjectStatus,
+  ProjectVisibility,
   Role,
+  SuggestionsResponse,
+  Task,
+  TaskResume,
+  TaskStatus,
   Team,
   TeamDetail,
   ChatTurn,
@@ -180,6 +190,109 @@ export const invitationApi = {
 
   accept: (token: string, payload: { password?: string; full_name?: string }) =>
     http.post<TokenResponse>(`/invitations/${token}/accept`, payload),
+}
+
+export const projectApi = {
+  list: (workspaceId: string, status?: ProjectStatus) => {
+    const query = status ? `?status=${status}` : ''
+    return http.get<Project[]>(`/workspaces/${workspaceId}/projects${query}`)
+  },
+
+  create: (
+    workspaceId: string,
+    payload: {
+      name: string
+      goal?: string
+      visibility?: ProjectVisibility
+      member_ids?: string[]
+    },
+  ) => http.post<ProjectDetail>(`/workspaces/${workspaceId}/projects`, payload),
+
+  get: (workspaceId: string, projectId: string) =>
+    http.get<ProjectDetail>(`/workspaces/${workspaceId}/projects/${projectId}`),
+
+  update: (
+    workspaceId: string,
+    projectId: string,
+    payload: { name?: string; goal?: string; status?: ProjectStatus; visibility?: ProjectVisibility },
+  ) => http.patch<ProjectDetail>(`/workspaces/${workspaceId}/projects/${projectId}`, payload),
+
+  remove: (workspaceId: string, projectId: string) =>
+    http.delete<{ message: string }>(`/workspaces/${workspaceId}/projects/${projectId}`),
+
+  addMember: (workspaceId: string, projectId: string, memberId: string) =>
+    http.put<{ message: string }>(
+      `/workspaces/${workspaceId}/projects/${projectId}/members/${memberId}`,
+    ),
+
+  removeMember: (workspaceId: string, projectId: string, memberId: string) =>
+    http.delete<{ message: string }>(
+      `/workspaces/${workspaceId}/projects/${projectId}/members/${memberId}`,
+    ),
+}
+
+export const taskApi = {
+  list: (
+    workspaceId: string,
+    filters: { project_id?: string; assignee_id?: string; status?: TaskStatus } = {},
+  ) => {
+    const params = new URLSearchParams()
+    for (const [key, value] of Object.entries(filters)) {
+      if (value) params.set(key, value)
+    }
+    const query = params.toString()
+    return http.get<Task[]>(`/workspaces/${workspaceId}/tasks${query ? `?${query}` : ''}`)
+  },
+
+  create: (
+    workspaceId: string,
+    projectId: string,
+    payload: {
+      title: string
+      notes?: string
+      assignee_id?: string | null
+      status?: TaskStatus
+      due_date?: string | null
+    },
+  ) => http.post<Task>(`/workspaces/${workspaceId}/projects/${projectId}/tasks`, payload),
+
+  update: (
+    workspaceId: string,
+    taskId: string,
+    payload: {
+      title?: string
+      notes?: string
+      assignee_id?: string | null
+      status?: TaskStatus
+      due_date?: string | null
+    },
+  ) => http.patch<Task>(`/workspaces/${workspaceId}/tasks/${taskId}`, payload),
+
+  remove: (workspaceId: string, taskId: string) =>
+    http.delete<{ message: string }>(`/workspaces/${workspaceId}/tasks/${taskId}`),
+
+  resume: (workspaceId: string, taskId: string) =>
+    http.get<TaskResume>(`/workspaces/${workspaceId}/tasks/${taskId}/resume`),
+}
+
+export const suggestionApi = {
+  get: (workspaceId: string, refresh = false) =>
+    http.get<SuggestionsResponse>(
+      `/workspaces/${workspaceId}/suggestions${refresh ? '?refresh=true' : ''}`,
+    ),
+}
+
+export const knowledgeApi = {
+  map: (workspaceId: string, filters: { kind?: DocumentKind; topic?: string } = {}) => {
+    const params = new URLSearchParams()
+    for (const [key, value] of Object.entries(filters)) {
+      if (value) params.set(key, value)
+    }
+    const query = params.toString()
+    return http.get<KnowledgeMap>(
+      `/workspaces/${workspaceId}/knowledge${query ? `?${query}` : ''}`,
+    )
+  },
 }
 
 export const modelApi = {

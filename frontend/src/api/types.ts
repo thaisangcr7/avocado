@@ -251,6 +251,116 @@ export interface InvitationPreview {
   requires_account: boolean
 }
 
+export type ProjectStatus = 'active' | 'paused' | 'completed' | 'archived'
+export type ProjectVisibility = 'restricted' | 'workspace'
+export type TaskStatus = 'todo' | 'in_progress' | 'blocked' | 'done'
+export type DocumentKind = 'policy' | 'process' | 'project' | 'reference' | 'other'
+export type SuggestionKind =
+  | 'task_due'
+  | 'task_overdue'
+  | 'task_blocked'
+  | 'new_document'
+  | 'unfinished_thread'
+  | 'failed_document'
+
+/** Board column order. */
+export const TASK_STATUSES: TaskStatus[] = ['todo', 'in_progress', 'blocked', 'done']
+
+export const TASK_STATUS_LABEL: Record<TaskStatus, string> = {
+  todo: 'To do',
+  in_progress: 'In progress',
+  blocked: 'Blocked',
+  done: 'Done',
+}
+
+export const DOCUMENT_KIND_LABEL: Record<DocumentKind, string> = {
+  policy: 'Policy',
+  process: 'Process',
+  project: 'Project',
+  reference: 'Reference',
+  other: 'Other',
+}
+
+export interface Project {
+  id: string
+  workspace_id: string
+  name: string
+  goal: string | null
+  status: ProjectStatus
+  /** `restricted` is the default: members and admins only. */
+  visibility: ProjectVisibility
+  created_by: string | null
+  created_at: string
+  updated_at: string
+}
+
+export interface ProjectDetail extends Project {
+  member_ids: string[]
+  task_counts: Record<string, number>
+}
+
+export interface Task {
+  id: string
+  project_id: string
+  workspace_id: string
+  assignee_id: string | null
+  title: string
+  notes: string | null
+  status: TaskStatus
+  due_date: string | null
+  created_at: string
+  updated_at: string
+}
+
+export interface TaskResume {
+  task: Task
+  conversation_id: string
+  summary: string
+  message_count: number
+  last_activity_at: string | null
+  /** False when the summary is deterministic rather than model-written. */
+  synthesized: boolean
+}
+
+export interface Suggestion {
+  id: string
+  kind: SuggestionKind
+  title: string
+  detail: string | null
+  task_id: string | null
+  project_id: string | null
+  document_id: string | null
+  conversation_id: string | null
+  priority: number
+}
+
+export interface SuggestionsResponse {
+  items: Suggestion[]
+  generated_at: string
+  cached: boolean
+  /** Null when the deterministic wording was used. */
+  model_used: string | null
+}
+
+export interface ClassifiedDocument {
+  document_id: string
+  filename: string
+  kind: DocumentKind
+  title: string | null
+  summary: string | null
+  topics: string[]
+  effective_date: string | null
+  team_id: string | null
+  created_at: string
+}
+
+export interface KnowledgeMap {
+  counts_by_kind: Record<string, number>
+  topics: string[]
+  documents: ClassifiedDocument[]
+  unclassified_count: number
+}
+
 export type TranscriptStatus = 'pending' | 'processing' | 'ready' | 'failed'
 
 export interface VoiceRecording {

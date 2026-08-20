@@ -14,6 +14,7 @@ import { streamMessage, type StreamSource } from '@/api/stream'
 import type { Citation, Message } from '@/api/types'
 import { Badge, Button, EmptyState, ErrorNotice, Spinner } from '@/components/ui/primitives'
 import { queryKeys, useMessages, useVoiceCapabilities } from '@/hooks/queries'
+import { SuggestionsBar } from '@/features/tasks/SuggestionsBar'
 import { VoiceInput } from '@/features/voice/VoiceInput'
 import { cn } from '@/lib/utils'
 import { useWorkspaceStore } from '@/stores/workspace'
@@ -21,9 +22,11 @@ import { useWorkspaceStore } from '@/stores/workspace'
 export function ChatView({
   workspaceId,
   conversationId,
+  onOpenTask,
 }: {
   workspaceId: string
   conversationId: string | null
+  onOpenTask?: (taskId: string) => void
 }) {
   const { data: messages, isLoading } = useMessages(workspaceId, conversationId)
   const { data: voice } = useVoiceCapabilities()
@@ -152,6 +155,10 @@ export function ChatView({
 
       <div className="border-t border-border-subtle bg-surface-raised px-6 py-4">
         <div className="mx-auto max-w-3xl">
+          {/* Nudges sit above the input: what needs attention, before what to
+              ask. */}
+          <SuggestionsBar workspaceId={workspaceId} onOpenTask={onOpenTask} />
+
           {error && (
             <div className="mb-3">
               <ErrorNotice message={error} />

@@ -9,6 +9,9 @@ import type { Document } from '@/api/types'
 import { AnalysisView } from '@/features/analysis/AnalysisView'
 import { ChatView } from '@/features/chat/ChatView'
 import { DocumentPanel } from '@/features/documents/DocumentPanel'
+import { KnowledgeMapView } from '@/features/knowledge/KnowledgeMap'
+import { TaskBoard } from '@/features/tasks/TaskBoard'
+import { TaskResumePanel } from '@/features/tasks/TaskResumePanel'
 import { TeamSettings } from '@/features/teams/TeamSettings'
 import { Badge, Button, Spinner } from '@/components/ui/primitives'
 import {
@@ -39,7 +42,20 @@ export function WorkspaceShell() {
   const [activeConversationId, setActiveConversationId] = useState<string | null>(null)
   const [analysisDocumentId, setAnalysisDocumentId] = useState<string | null>(null)
   const [settingsTeamId, setSettingsTeamId] = useState<string | null>(null)
+  // Which of the mutually exclusive main-pane views is open, if any.
+  const [pane, setPane] = useState<'chat' | 'tasks' | 'knowledge'>('chat')
+  const [resumeTaskId, setResumeTaskId] = useState<string | null>(null)
   const [mobilePane, setMobilePane] = useState<MobilePane>('main')
+
+  // Opening one main-pane view closes the others, so the pane never has two
+  // things claiming it.
+  function show(next: 'chat' | 'tasks' | 'knowledge') {
+    setPane(next)
+    setAnalysisDocumentId(null)
+    setSettingsTeamId(null)
+    setResumeTaskId(null)
+    setMobilePane('main')
+  }
 
   // Settle on a workspace once they load: the stored one if it still exists,
   // otherwise the first. A stale id from a deleted workspace must not stick.
@@ -62,10 +78,11 @@ export function WorkspaceShell() {
   return (
     <div className="flex h-screen flex-col bg-surface">
       <TopBar
+        activePane={pane}
+        onShowPane={show}
         onOpenTeam={(teamId) => {
+          show('chat')
           setSettingsTeamId(teamId)
-          setAnalysisDocumentId(null)
-          setMobilePane('main')
         }}
       />
 
@@ -83,8 +100,7 @@ export function WorkspaceShell() {
             activeConversationId={activeConversationId}
             onSelect={(id) => {
               setActiveConversationId(id)
-              setAnalysisDocumentId(null)
-              setSettingsTeamId(null)
+              show('chat')
               // Choosing a thread on a phone should show it, not leave the
               // user staring at the list they just picked from.
               setMobilePane('main')
@@ -103,6 +119,24 @@ export function WorkspaceShell() {
             <div className="flex h-full items-center justify-center text-sm text-ink-muted">
               Create a workspace to begin.
             </div>
+          ) : resumeTaskId ? (
+            <TaskResumePanel
+              workspaceId={workspace.id}
+              taskId={resumeTaskId}
+              onOpenThread={(conversationId) => {
+                setActiveConversationId(conversationId)
+                show('chat')
+              }}
+              onClose={() => setResumeTaskId(null)}
+            />
+          ) : pane === 'tasks' ? (
+            <TaskBoard
+              workspaceId={workspace.id}
+              onResumeTask={setResumeTaskId}
+              onClose={() => show('chat')}
+            />
+          ) : pane === 'knowledge' ? (
+            <KnowledgeMapView workspaceId={workspace.id} onClose={() => show('chat')} />
           ) : settingsTeamId ? (
             <TeamSettings
               teamId={settingsTeamId}
@@ -117,6 +151,7 @@ export function WorkspaceShell() {
             <ChatView
               workspaceId={workspace.id}
               conversationId={activeConversationId}
+              onOpenTask={setResumeTaskId}
             />
           )}
         </main>
@@ -132,9 +167,8 @@ export function WorkspaceShell() {
             <DocumentPanel
               workspaceId={activeWorkspaceId}
               onSelectDocument={(document: Document) => {
+                show('chat')
                 setAnalysisDocumentId(document.id)
-                setSettingsTeamId(null)
-                setMobilePane('main')
               }}
             />
           )}
@@ -184,7 +218,15 @@ function MobileTabBar({
   )
 }
 
-function TopBar({ onOpenTeam }: { onOpenTeam: (teamId: string) => void }) {
+function TopBar({
+  activePane,
+  onShowPane,
+  onOpenTeam,
+}: {
+  activePane: 'chat' | 'tasks' | 'knowledge'
+  onShowPane: (pane: 'chat' | 'tasks' | 'knowledge') => void
+  onOpenTeam: (teamId: string) => void
+}) {
   const user = useAuthStore((state) => state.user)
   const signOut = useAuthStore((state) => state.signOut)
   const { data: teams } = useTeams()
@@ -205,6 +247,24 @@ function TopBar({ onOpenTeam }: { onOpenTeam: (teamId: string) => void }) {
       </div>
 
       <div className="flex min-w-0 items-center gap-2 sm:gap-3">
+        <nav className="hidden items-center gap-0.5 sm:flex" aria-label="Views">
+          {(['chat', 'tasks', 'knowledge'] as const).map((candidate) => (
+            <button
+              key={candidate}
+              onClick={() => onShowPane(candidate)}
+              aria-current={activePane === candidate ? 'page' : undefined}
+              className={cn(
+                'rounded-lg px-2.5 py-1 text-sm capitalize transition-colors',
+                activePane === candidate
+                  ? 'bg-accent-soft text-accent-strong'
+                  : 'text-ink-muted hover:text-ink',
+              )}
+            >
+              {candidate}
+            </button>
+          ))}
+        </nav>
+
         {teams && teams.length > 0 && (
           <label className="flex items-center gap-1.5">
             <span className="sr-only">Team settings</span>
