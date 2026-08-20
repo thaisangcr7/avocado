@@ -112,6 +112,13 @@ cd frontend && npm test -- --run
 ```
 
 ```bash
+./scripts/verify.sh
+```
+
+That runs every gate CI runs, in the same order, and stops at the first
+failure. `--quick` skips the slow integration suite. The individual commands:
+
+```bash
 cd backend && ruff check . && ruff format --check .
 ```
 
