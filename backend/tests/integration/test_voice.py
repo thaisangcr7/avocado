@@ -291,6 +291,17 @@ async def test_recordings_do_not_cross_the_tenant_boundary(client):
     ).status_code == 404
 
 
+async def wait_for_classification(client, account, document_id: str, attempts: int = 80):
+    """Poll until the tagging step that follows ingestion has landed."""
+    path = f"/workspaces/{account['workspace_id']}/documents/{document_id}/classification"
+    for _ in range(attempts):
+        response = await client.get(path, headers=account["headers"])
+        if response.status_code == 200:
+            return response.json()
+        await asyncio.sleep(0.05)
+    raise AssertionError("Document was never classified.")
+
+
 async def test_a_transcript_joins_the_knowledge_map(client, account, fake_llm):
     """A transcript is a document like any other. Without classification a
     meeting recording is retrievable but invisible to 'what does this team
@@ -316,12 +327,10 @@ async def test_a_transcript_joins_the_knowledge_map(client, account, fake_llm):
     recording = await wait_for_transcript(client, account, response.json()["recording"]["id"])
     await wait_for_ready(client, recording["document_id"], account["headers"])
 
-    classification = await client.get(
-        f"/workspaces/{account['workspace_id']}/documents/{recording['document_id']}/classification",
-        headers=account["headers"],
-    )
-    assert classification.status_code == 200, classification.text
-    assert classification.json()["kind"] == "process"
+    # The document is marked ready before it is classified, so waiting on
+    # readiness alone races the tagging step that this test is about.
+    classification = await wait_for_classification(client, account, recording["document_id"])
+    assert classification["kind"] == "process"
 
     knowledge = await client.get(
         f"/workspaces/{account['workspace_id']}/knowledge", headers=account["headers"]
