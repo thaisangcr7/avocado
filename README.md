@@ -99,6 +99,30 @@ python backend/scripts/generate_demo_data.py --reset --base-url http://localhost
 That truncates the local Postgres tables in the compose stack, so use it only
 against your local demo environment.
 
+### Sync a local folder (connector-style MVP)
+
+To avoid one-by-one uploads, sync a folder into a workspace through the API.
+The sync is incremental: unchanged files are skipped, changed files are
+re-uploaded, and optional delete mode removes files that were removed locally.
+
+```bash
+python backend/scripts/sync_workspace_folder.py \
+  /absolute/path/to/folder \
+  --base-url http://localhost:8000 \
+  --email owner@example.com \
+  --password 'your-password' \
+  --workspace-name "My Workspace" \
+  --wait-ready
+```
+
+Useful flags:
+
+- `--delete-missing`: remove previously synced documents when they are no longer in the folder.
+- `--dry-run`: preview upload/delete actions without changing remote data.
+- `--workspace-id`: target by id instead of name.
+
+The script stores sync state in `<folder>/.avocado-sync-state.json` by default.
+
 ### Deployment checklist
 
 Before a cloud deploy, set these explicitly:
