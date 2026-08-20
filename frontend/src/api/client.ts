@@ -12,7 +12,23 @@
 
 import type { ProblemDetail } from './types'
 
-const BASE_URL = import.meta.env.VITE_API_BASE_URL ?? '/api/v1'
+type RuntimeConfig = {
+  apiBaseUrl?: string
+}
+
+declare global {
+  interface Window {
+    __AVOCADO_CONFIG__?: RuntimeConfig
+  }
+}
+
+export function resolveBaseUrl() {
+  const runtimeBaseUrl = window.__AVOCADO_CONFIG__?.apiBaseUrl?.trim()
+  const buildBaseUrl = import.meta.env.VITE_API_BASE_URL?.trim()
+  return runtimeBaseUrl || buildBaseUrl || '/api/v1'
+}
+
+const BASE_URL = resolveBaseUrl()
 
 const ACCESS_TOKEN_KEY = 'avocado.access_token'
 const REFRESH_TOKEN_KEY = 'avocado.refresh_token'

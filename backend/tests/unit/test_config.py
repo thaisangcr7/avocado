@@ -65,6 +65,11 @@ def test_selected_provider_without_its_key_fails_at_boot():
         Settings(app_env="development", storage_backend="s3")
 
 
+def test_http_sandbox_requires_a_nonempty_token():
+    with pytest.raises(ValueError, match="SANDBOX_AUTH_TOKEN"):
+        Settings(app_env="development", sandbox_backend="http", sandbox_auth_token="   ")
+
+
 def test_sandbox_limits_are_bounded():
     """Limits are security controls, so absurd values are rejected outright."""
     with pytest.raises(ValueError):
@@ -76,3 +81,20 @@ def test_sandbox_limits_are_bounded():
 def test_cors_origins_parse_into_a_list():
     settings = Settings(app_env="development", cors_origins="http://a.com, http://b.com")
     assert settings.cors_origin_list == ["http://a.com", "http://b.com"]
+
+
+def test_public_web_url_is_normalized_and_validated():
+    settings = Settings(app_env="development", public_web_url="https://app.example.com/")
+    assert settings.public_web_url == "https://app.example.com"
+
+
+def test_public_web_url_rejects_paths():
+    with pytest.raises(ValueError, match="PUBLIC_WEB_URL"):
+        Settings(app_env="development", public_web_url="https://app.example.com/invite")
+
+
+def test_cors_origins_reject_paths_and_non_http_urls():
+    with pytest.raises(ValueError, match="CORS_ORIGINS"):
+        Settings(app_env="development", cors_origins="https://app.example.com/api")
+    with pytest.raises(ValueError, match="CORS_ORIGINS"):
+        Settings(app_env="development", cors_origins="ftp://app.example.com")

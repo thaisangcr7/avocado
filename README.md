@@ -65,6 +65,9 @@ The API is on `http://localhost:8000` (docs at `/docs`), the web app on
 to avoid colliding with other instances you may already run; inside the compose
 network they use their standard ports.
 
+For deployments, the frontend container reads `AVOCADO_API_BASE_URL` at runtime,
+so the same image can point at different API hosts without a rebuild.
+
 To enable answer generation and analysis, set `ANTHROPIC_API_KEY` in `.env`.
 Without it, upload and retrieval still work and every generation endpoint
 returns a clear error rather than a fabricated answer.
@@ -95,6 +98,18 @@ python backend/scripts/generate_demo_data.py --reset --base-url http://localhost
 
 That truncates the local Postgres tables in the compose stack, so use it only
 against your local demo environment.
+
+### Deployment checklist
+
+Before a cloud deploy, set these explicitly:
+
+- `SECRET_KEY` to a generated secret.
+- `SANDBOX_AUTH_TOKEN` for the API and sandbox runner.
+- `PUBLIC_WEB_URL` to the real frontend origin.
+- `CORS_ORIGINS` to the frontend origin list.
+- `AVOCADO_API_BASE_URL` for the frontend container, if it is not served from the same origin as the API.
+
+That keeps the same image portable across local, staging, and production.
 
 ### Enabling row-level security
 

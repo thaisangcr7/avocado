@@ -7,7 +7,7 @@
  */
 
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { ApiError, http, setSessionExpiredHandler, tokenStore } from './client'
+import { ApiError, http, resolveBaseUrl, setSessionExpiredHandler, tokenStore } from './client'
 
 function jsonResponse(status: number, body: unknown) {
   return {
@@ -34,6 +34,7 @@ describe('tokenStore', () => {
 describe('http', () => {
   beforeEach(() => {
     localStorage.clear()
+    delete window.__AVOCADO_CONFIG__
     tokenStore.set('access-1', 'refresh-1')
   })
 
@@ -162,5 +163,10 @@ describe('http', () => {
     await expect(http.get('/workspaces')).rejects.toThrowError(ApiError)
     expect(onExpired).toHaveBeenCalled()
     expect(tokenStore.access).toBeNull()
+  })
+
+  it('prefers a runtime base url over the build-time default', async () => {
+    window.__AVOCADO_CONFIG__ = { apiBaseUrl: 'https://demo.example.com/api/v1' }
+    expect(resolveBaseUrl()).toBe('https://demo.example.com/api/v1')
   })
 })

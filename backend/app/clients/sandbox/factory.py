@@ -18,7 +18,9 @@ def build_sandbox(settings: Settings) -> Sandbox | None:
     if settings.sandbox_backend == "disabled":
         return None
     if settings.sandbox_backend == "http":
-        return HttpSandbox(settings.sandbox_url, settings.sandbox_auth_token or "")
+        if not (settings.sandbox_auth_token or "").strip():
+            raise ValueError("SANDBOX_BACKEND=http requires SANDBOX_AUTH_TOKEN.")
+        return HttpSandbox(settings.sandbox_url, settings.sandbox_auth_token)
     return DockerSandbox(settings.sandbox_image, work_root=settings.sandbox_work_root)
 
 

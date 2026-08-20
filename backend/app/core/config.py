@@ -11,6 +11,7 @@ from __future__ import annotations
 import secrets
 from functools import lru_cache
 from typing import Literal
+from urllib.parse import urlparse
 
 from pydantic import Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -165,6 +166,34 @@ class Settings(BaseSettings):
     def _upper_log_level(cls, v: str) -> str:
         return v.upper()
 
+    @field_validator("public_web_url")
+    @classmethod
+    def _validate_public_web_url(cls, value: str) -> str:
+        parsed = urlparse(value.strip())
+        if parsed.scheme not in {"http", "https"} or not parsed.netloc:
+            raise ValueError("PUBLIC_WEB_URL must be an absolute http(s) URL.")
+        if parsed.path not in {"", "/"} or parsed.params or parsed.query or parsed.fragment:
+            raise ValueError("PUBLIC_WEB_URL must not include a path, query, or fragment.")
+        return f"{parsed.scheme}://{parsed.netloc}"
+
+    @field_validator("cors_origins")
+    @classmethod
+    def _validate_cors_origins(cls, value: str) -> str:
+        origins = [origin.strip() for origin in value.split(",") if origin.strip()]
+        if not origins:
+            raise ValueError("CORS_ORIGINS must contain at least one http(s) origin.")
+
+        canonical_origins: list[str] = []
+        for origin in origins:
+            parsed = urlparse(origin)
+            if parsed.scheme not in {"http", "https"} or not parsed.netloc:
+                raise ValueError("CORS_ORIGINS entries must be absolute http(s) origins.")
+            if parsed.path not in {"", "/"} or parsed.params or parsed.query or parsed.fragment:
+                raise ValueError("CORS_ORIGINS entries must not include a path, query, or fragment.")
+            canonical_origins.append(f"{parsed.scheme}://{parsed.netloc}")
+
+        return ",".join(canonical_origins)
+
     @model_validator(mode="after")
     def _reject_placeholders(self) -> Settings:
         """Fail fast rather than boot with a known-public secret."""
@@ -198,7 +227,7 @@ class Settings(BaseSettings):
             raise ValueError("EMBEDDING_PROVIDER=voyage requires VOYAGE_API_KEY.")
         if self.embedding_provider == "openai" and not self.openai_api_key:
             raise ValueError("EMBEDDING_PROVIDER=openai requires OPENAI_API_KEY.")
-        if self.sandbox_backend == "http" and not self.sandbox_auth_token:
+        if self.sandbox_backend == "http" and not (self.sandbox_auth_token or "").strip():
             raise ValueError(
                 "SANDBOX_BACKEND=http requires SANDBOX_AUTH_TOKEN, or the runner "
                 "would accept anonymous code execution."
