@@ -8,6 +8,7 @@ files, and optionally delete files in Avocado that were removed locally.
 from __future__ import annotations
 
 import argparse
+import getpass
 import hashlib
 import io
 import json
@@ -283,7 +284,12 @@ def main() -> None:
     parser.add_argument("folder", help="Local folder to sync")
     parser.add_argument("--base-url", default=DEFAULT_BASE_URL, help="Avocado base URL (with or without /api/v1)")
     parser.add_argument("--email", required=True, help="Avocado account email")
-    parser.add_argument("--password", required=True, help="Avocado account password")
+    parser.add_argument("--password", help="Avocado account password (avoid in shared shell history)")
+    parser.add_argument(
+        "--password-env",
+        default="AVOCADO_PASSWORD",
+        help="Environment variable name that stores the account password",
+    )
     parser.add_argument("--workspace-id", help="Target workspace id")
     parser.add_argument("--workspace-name", help="Target workspace name (used when workspace-id is omitted)")
     parser.add_argument("--state-file", help="Path for sync state JSON (default: <folder>/.avocado-sync-state.json)")
@@ -297,6 +303,12 @@ def main() -> None:
     if not root.exists() or not root.is_dir():
         raise RuntimeError(f"Folder not found: {root}")
 
+    password = args.password or os.environ.get(args.password_env)
+    if not password:
+        password = getpass.getpass("Avocado password: ")
+    if not password:
+        raise RuntimeError("A password is required. Use --password, set AVOCADO_PASSWORD, or enter it at the prompt.")
+
     state_path = Path(args.state_file).expanduser().resolve() if args.state_file else root / STATE_FILENAME
     state = load_state(state_path)
     managed_files = state.setdefault("managed_files", {})
@@ -305,7 +317,7 @@ def main() -> None:
 
     base_url = normalize_base_url(args.base_url)
     client = ApiClient(base_url)
-    headers = auth_headers(client, args.email, args.password)
+    headers = auth_headers(client, args.email, password)
     workspace_id = resolve_workspace_id(client, headers, args.workspace_id, args.workspace_name)
 
     remote_documents = list_documents(client, headers, workspace_id)

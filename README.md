@@ -106,11 +106,12 @@ The sync is incremental: unchanged files are skipped, changed files are
 re-uploaded, and optional delete mode removes files that were removed locally.
 
 ```bash
+export AVOCADO_PASSWORD='your-password'
+
 python backend/scripts/sync_workspace_folder.py \
   /absolute/path/to/folder \
   --base-url http://localhost:8000 \
   --email owner@example.com \
-  --password 'your-password' \
   --workspace-name "My Workspace" \
   --wait-ready
 ```
@@ -120,6 +121,7 @@ Useful flags:
 - `--delete-missing`: remove previously synced documents when they are no longer in the folder.
 - `--dry-run`: preview upload/delete actions without changing remote data.
 - `--workspace-id`: target by id instead of name.
+- `--password-env`: use a different environment variable for password (default `AVOCADO_PASSWORD`).
 
 The script stores sync state in `<folder>/.avocado-sync-state.json` by default.
 
