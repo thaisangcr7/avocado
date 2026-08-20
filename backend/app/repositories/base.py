@@ -48,6 +48,9 @@ class BaseRepository(Generic[ModelT]):
     async def commit(self) -> None:
         await self._session.commit()
 
+    async def rollback(self) -> None:
+        await self._session.rollback()
+
     async def refresh(self, entity: ModelT) -> ModelT:
         """Reload server-computed columns after an UPDATE.
 

@@ -275,3 +275,46 @@ async def test_a_classification_failure_does_not_fail_the_ingest(client, owner, 
         headers=owner["headers"],
     )
     assert untagged.status_code == 404
+
+
+async def test_a_lost_insert_race_recovers_instead_of_500ing(client, owner, fake_llm, monkeypatch):
+    """Ingestion classifies in the background while a user can ask for the same.
+
+    Both callers can read no row and both try to insert; a unique index settles
+    it and the loser must re-read and update. CI hit this as a duplicate key
+    violation surfacing as a 500.
+
+    Two real HTTP calls serialise here, so the losing read is forced directly:
+    the lookup returns None once while the row genuinely exists, which is
+    exactly the state the losing caller is in.
+    """
+    from app.repositories.knowledge import ClassificationRepository
+
+    document = await seed(client, owner, "raced.txt", fake_llm=fake_llm)
+
+    fake_llm.responses = [classification(kind="policy")]
+    first = await classify(client, owner, document["id"])
+    assert first.status_code == 200, first.text
+
+    real_lookup = ClassificationRepository.get_for_document
+    calls = {"n": 0}
+
+    async def lookup_once_blind(self, document_id, workspace_id):
+        calls["n"] += 1
+        if calls["n"] == 1:
+            return None
+        return await real_lookup(self, document_id, workspace_id)
+
+    monkeypatch.setattr(ClassificationRepository, "get_for_document", lookup_once_blind)
+
+    fake_llm.responses = [classification(kind="process")]
+    second = await classify(client, owner, document["id"])
+    assert second.status_code == 200, second.text
+    assert second.json()["kind"] == "process", "the recovering write should still land"
+
+    # One row, not two: the conflict was resolved by updating, not inserting.
+    knowledge = await client.get(
+        f"/workspaces/{owner['workspace_id']}/knowledge", headers=owner["headers"]
+    )
+    matching = [d for d in knowledge.json()["documents"] if d["document_id"] == document["id"]]
+    assert len(matching) == 1, matching

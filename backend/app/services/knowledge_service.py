@@ -17,6 +17,8 @@ import json
 import uuid
 from datetime import date
 
+from sqlalchemy.exc import IntegrityError
+
 from app.clients.llm.base import ChatMessage
 from app.clients.llm.router import ModelRouter, TaskType
 from app.core.errors import NotFoundError, ProviderError
@@ -156,42 +158,65 @@ class KnowledgeService:
         payload: dict,
         model_used: str,
     ) -> ClassificationResponse:
-        existing = await self._classifications.get_for_document(document.id, workspace_id)
-
         kind = _parse_kind(payload.get("kind"))
         topics = [
             str(t).strip().lower()[:40] for t in (payload.get("topics") or [])[:8] if str(t).strip()
         ]
 
+        # Read off the document before any rollback: rolling back expires every
+        # object in the session, and touching an expired attribute afterwards
+        # triggers lazy IO that raises MissingGreenlet under asyncio.
+        document_id = document.id
+        filename = document.filename
+
+        def apply(row: DocumentClassification) -> None:
+            row.kind = kind
+            row.title = (payload.get("title") or filename)[:300]
+            row.summary = (payload.get("summary") or "")[:2000] or None
+            row.topics = topics
+            row.effective_date = _parse_date(payload.get("effective_date"))
+            row.confidence = float(payload.get("confidence") or 0.0)
+            row.model_used = model_used
+            if team_id is not None:
+                row.team_id = team_id
+
+        existing = await self._classifications.get_for_document(document_id, workspace_id)
+
         if existing is None:
-            existing = await self._classifications.add(
-                DocumentClassification(
-                    workspace_id=workspace_id,
-                    document_id=document.id,
-                    team_id=team_id,
-                )
+            # Ingestion classifies in the background while a user can ask for a
+            # re-classification of the same document, so two callers can both
+            # find no row and both insert. The unique index settles it; the
+            # loser re-reads and updates instead of surfacing a 500.
+            candidate = DocumentClassification(
+                workspace_id=workspace_id,
+                document_id=document_id,
+                team_id=team_id,
             )
+            apply(candidate)
+            try:
+                existing = await self._classifications.add(candidate)
+                await self._classifications.commit()
+            except IntegrityError:
+                await self._classifications.rollback()
+                existing = await self._classifications.get_for_document(document_id, workspace_id)
+                if existing is None:
+                    raise
+                log.info("classification_raced", document_id=str(document_id))
+                existing.version += 1
+                apply(existing)
+                await self._classifications.commit()
         else:
             # Re-running the pass updates in place and counts as a new version,
             # rather than accumulating rows nothing reads.
             existing.version += 1
+            apply(existing)
+            await self._classifications.commit()
 
-        existing.kind = kind
-        existing.title = (payload.get("title") or document.filename)[:300]
-        existing.summary = (payload.get("summary") or "")[:2000] or None
-        existing.topics = topics
-        existing.effective_date = _parse_date(payload.get("effective_date"))
-        existing.confidence = float(payload.get("confidence") or 0.0)
-        existing.model_used = model_used
-        if team_id is not None:
-            existing.team_id = team_id
-
-        await self._classifications.commit()
         await self._classifications.refresh(existing)
 
         log.info(
             "document_classified",
-            document_id=str(document.id),
+            document_id=str(document_id),
             kind=kind.value,
             topics=topics,
             version=existing.version,

@@ -11,6 +11,7 @@ import json
 import pytest
 
 from app.clients.sandbox.base import SandboxResult
+from tests.conftest import quiesce_llm
 from tests.integration.test_documents import CSV_CONTENT, upload, wait_for_ready
 
 pytestmark = pytest.mark.anyio
@@ -29,18 +30,23 @@ def codegen_calls(fake_llm):
     ]
 
 
-async def seed_spreadsheet(client, account):
+async def seed_spreadsheet(client, account, fake_llm=None):
     response = await upload(client, account, "sales.csv", CSV_CONTENT, "text/csv")
     assert response.status_code == 201
     document = await wait_for_ready(client, response.json()["document"]["id"], account["headers"])
     assert document["status"] == "ready", document.get("error_message")
+    if fake_llm is not None:
+        # Ingestion classifies after marking the document ready, so a caller
+        # about to stage its own responses has to let that finish first or the
+        # late call eats the first one.
+        await quiesce_llm(fake_llm)
     return document
 
 
 async def test_a_question_is_answered_by_generated_and_executed_code(
     client, account, fake_llm, fake_sandbox
 ):
-    document = await seed_spreadsheet(client, account)
+    document = await seed_spreadsheet(client, account, fake_llm)
     fake_llm.responses = [
         json.dumps(
             {
@@ -71,7 +77,7 @@ async def test_a_question_is_answered_by_generated_and_executed_code(
 
 async def test_code_that_fails_is_retried_with_the_error(client, account, fake_llm, fake_sandbox):
     """A wrong column name is the common failure and is recoverable."""
-    document = await seed_spreadsheet(client, account)
+    document = await seed_spreadsheet(client, account, fake_llm)
 
     fake_sandbox.results = [
         SandboxResult(success=False, error="KeyError: 'sales_total'", execution_ms=10),
@@ -99,7 +105,7 @@ async def test_code_that_fails_is_retried_with_the_error(client, account, fake_l
 
 
 async def test_retries_are_bounded(client, account, fake_llm, fake_sandbox):
-    document = await seed_spreadsheet(client, account)
+    document = await seed_spreadsheet(client, account, fake_llm)
 
     fake_sandbox.results = [
         SandboxResult(success=False, error="KeyError: 'a'", execution_ms=5),
@@ -124,7 +130,7 @@ async def test_retries_are_bounded(client, account, fake_llm, fake_sandbox):
 
 async def test_a_timeout_is_not_retried(client, account, fake_llm, fake_sandbox):
     """Rewriting the same query will not make it finish faster."""
-    document = await seed_spreadsheet(client, account)
+    document = await seed_spreadsheet(client, account, fake_llm)
 
     fake_sandbox.results = [
         SandboxResult(
@@ -151,7 +157,7 @@ async def test_a_timeout_is_not_retried(client, account, fake_llm, fake_sandbox)
 async def test_dangerous_generated_code_never_reaches_the_sandbox(
     client, account, fake_llm, fake_sandbox
 ):
-    document = await seed_spreadsheet(client, account)
+    document = await seed_spreadsheet(client, account, fake_llm)
 
     fake_llm.responses = [
         json.dumps({"code": "import socket\nresult = socket.gethostname()", "explanation": "x"}),
@@ -203,7 +209,7 @@ async def test_a_document_with_no_table_cannot_be_analysed(client, account):
 
 
 async def test_a_run_can_be_fetched_and_listed(client, account, fake_llm):
-    document = await seed_spreadsheet(client, account)
+    document = await seed_spreadsheet(client, account, fake_llm)
     fake_llm.responses = [
         json.dumps({"code": "result = sales['revenue'].sum()", "explanation": "Sum."}),
         "Total is 45,000.",
@@ -229,7 +235,7 @@ async def test_a_run_can_be_fetched_and_listed(client, account, fake_llm):
 async def test_a_generated_chart_is_stored_and_served(client, account, fake_llm, fake_sandbox):
     import base64
 
-    document = await seed_spreadsheet(client, account)
+    document = await seed_spreadsheet(client, account, fake_llm)
     png = base64.b64encode(b"\x89PNG\r\n\x1a\n" + b"fake image bytes").decode()
     fake_sandbox.results = [
         SandboxResult(success=True, stdout="charted", chart_png_b64=png, execution_ms=20)
@@ -255,7 +261,7 @@ async def test_a_generated_chart_is_stored_and_served(client, account, fake_llm,
 
 async def test_the_model_receives_the_schema_but_never_the_data(client, account, fake_llm):
     """Code is written against column names and types, not against rows."""
-    document = await seed_spreadsheet(client, account)
+    document = await seed_spreadsheet(client, account, fake_llm)
     fake_llm.responses = [
         json.dumps({"code": "result = sales['revenue'].sum()", "explanation": "Sum."}),
         "Total is 45,000.",

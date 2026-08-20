@@ -12,6 +12,7 @@ to the request it just made.
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import os
 import uuid
@@ -217,3 +218,26 @@ async def register_account(
 @pytest.fixture
 async def account(client) -> dict:  # type: ignore[no-untyped-def]
     return await register_account(client)
+
+
+async def quiesce_llm(fake_llm, *, settle: float = 0.05, attempts: int = 60) -> None:
+    """Wait until background work has stopped calling the fake provider.
+
+    Ingestion classifies a document *after* marking it ready, so a test that
+    seeds a document and then assigns `fake_llm.responses` can have that late
+    classification consume the first response it meant for itself. Waiting for
+    readiness is not enough; the call count settling is what says the
+    background pass is actually done.
+    """
+    seen = -1
+    stable = 0
+    for _ in range(attempts):
+        count = len(fake_llm.calls)
+        if count == seen:
+            stable += 1
+            if stable >= 2:
+                return
+        else:
+            seen = count
+            stable = 0
+        await asyncio.sleep(settle)
