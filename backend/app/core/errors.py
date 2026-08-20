@@ -83,6 +83,18 @@ class ProviderError(AvocadoError):
     error_type = "https://avocado.dev/errors/provider"
 
 
+class ProviderCredentialError(ProviderError):
+    """A provider rejected the credential itself, or the account cannot pay.
+
+    Separate from `ProviderError` because retrying cannot fix it: a revoked key
+    or an exhausted quota keeps failing until a human changes something. That
+    distinction is what lets the registry stop offering a provider that will
+    only produce errors, without a transient rate limit taking it down.
+    """
+
+    title = "Provider Credential Rejected"
+
+
 class SandboxError(AvocadoError):
     """Analysis code could not be executed safely, or failed while executing."""
 

@@ -26,7 +26,7 @@ from app.clients.llm.base import (
     StreamChunk,
     Usage,
 )
-from app.core.errors import ProviderError
+from app.core.errors import ProviderCredentialError, ProviderError
 from app.core.logging import get_logger
 
 log = get_logger(__name__)
@@ -96,6 +96,19 @@ def _to_anthropic_messages(messages: list[ChatMessage]) -> list[dict[str, Any]]:
     return out
 
 
+def _classify(exc: anthropic.APIStatusError, action: str) -> ProviderError:
+    """Distinguish a rejected credential from a failure worth retrying.
+
+    A 429 here is ordinary rate limiting, which clears on its own; only an
+    outright rejection of the key means the provider cannot serve until someone
+    intervenes.
+    """
+    detail = f"Claude {action} failed ({exc.status_code})."
+    if exc.status_code in (401, 403):
+        return ProviderCredentialError(detail)
+    return ProviderError(detail)
+
+
 def _usage_from(raw: Any) -> Usage:
     return Usage(
         input_tokens=getattr(raw, "input_tokens", 0) or 0,
@@ -143,7 +156,7 @@ class AnthropicProvider(LLMProvider):
                 response = await self._client.messages.create(**kwargs)
         except anthropic.APIStatusError as exc:
             log.warning("anthropic_api_error", status=exc.status_code, model=model)
-            raise ProviderError(f"Claude request failed ({exc.status_code}).") from exc
+            raise _classify(exc, "request") from exc
         except anthropic.APIConnectionError as exc:
             raise ProviderError("Could not reach the Claude API.") from exc
 
@@ -184,7 +197,7 @@ class AnthropicProvider(LLMProvider):
                 final = await stream.get_final_message()
         except anthropic.APIStatusError as exc:
             log.warning("anthropic_stream_error", status=exc.status_code, model=model)
-            raise ProviderError(f"Claude stream failed ({exc.status_code}).") from exc
+            raise _classify(exc, "stream") from exc
         except anthropic.APIConnectionError as exc:
             raise ProviderError("Could not reach the Claude API.") from exc
 

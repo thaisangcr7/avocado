@@ -16,10 +16,35 @@ from app.clients.llm.base import (
     StreamChunk,
     Usage,
 )
-from app.core.errors import ProviderError
+from app.core.errors import ProviderCredentialError, ProviderError
 from app.core.logging import get_logger
 
 log = get_logger(__name__)
+
+
+def _classify(exc: openai.APIStatusError) -> ProviderError:
+    """Turn an OpenAI status error into the right kind of ProviderError.
+
+    Only conditions a retry cannot clear are credential errors. A plain 429 is
+    ordinary rate limiting and must stay transient: treating it as permanent
+    would let a burst of traffic disable the provider for everyone.
+    """
+    detail = f"OpenAI request failed ({exc.status_code})."
+    if exc.status_code in (401, 403):
+        return ProviderCredentialError(detail)
+    if exc.status_code == 429 and _is_quota_exhausted(exc):
+        return ProviderCredentialError("OpenAI quota is exhausted for this account.")
+    return ProviderError(detail)
+
+
+def _is_quota_exhausted(exc: openai.APIStatusError) -> bool:
+    body = getattr(exc, "body", None)
+    if isinstance(body, dict):
+        error = body.get("error")
+        if isinstance(error, dict) and error.get("code") == "insufficient_quota":
+            return True
+    return "insufficient_quota" in str(exc)
+
 
 OPENAI_MODELS: list[ModelSpec] = [
     ModelSpec(
@@ -105,7 +130,7 @@ class OpenAIProvider(LLMProvider):
             response = await self._client.chat.completions.create(**kwargs)
         except openai.APIStatusError as exc:
             log.warning("openai_api_error", status=exc.status_code, model=model)
-            raise ProviderError(f"OpenAI request failed ({exc.status_code}).") from exc
+            raise _classify(exc) from exc
         except openai.APIConnectionError as exc:
             raise ProviderError("Could not reach the OpenAI API.") from exc
 
@@ -154,7 +179,7 @@ class OpenAIProvider(LLMProvider):
                 if delta and delta.content:
                     yield StreamChunk(text=delta.content)
         except openai.APIStatusError as exc:
-            raise ProviderError(f"OpenAI stream failed ({exc.status_code}).") from exc
+            raise _classify(exc) from exc
         except openai.APIConnectionError as exc:
             raise ProviderError("Could not reach the OpenAI API.") from exc
 

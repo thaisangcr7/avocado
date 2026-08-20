@@ -2,11 +2,14 @@
 
 from __future__ import annotations
 
+import httpx
+import openai
 import pytest
 
-from app.clients.llm.router import ModelRouter, ProviderRegistry, TaskType
+from app.clients.llm.openai_provider import _classify as _openai_classify
+from app.clients.llm.router import ModelRouter, ProviderRegistry, TaskType, _HealthTracked
 from app.core.config import Settings
-from app.core.errors import ProviderError, ValidationError
+from app.core.errors import ProviderCredentialError, ProviderError, ValidationError
 from tests.fakes import FakeLLMProvider
 
 
@@ -56,3 +59,76 @@ def test_cost_is_computed_from_the_model_spec(registry):
     _, spec = registry.find_model("fake-frontier")
     # 1M input at $5 + 1M output at $25.
     assert spec.cost_usd(Usage(input_tokens=1_000_000, output_tokens=1_000_000)) == 30.0
+
+
+class _FailingProvider(FakeLLMProvider):
+    """A fake that always fails a generate call with a given error."""
+
+    def __init__(self, error: Exception) -> None:
+        super().__init__()
+        self._error = error
+
+    async def generate(self, **kwargs):
+        raise self._error
+
+
+async def _drive(registry, provider_name, error):
+    """Route one generate call through the registry's tracking wrapper."""
+    tracked = _HealthTracked(_FailingProvider(error), registry)
+    with pytest.raises(type(error)):
+        await tracked.generate(messages=[], model="fake-fast")
+    return tracked
+
+
+@pytest.mark.anyio
+async def test_a_rejected_credential_retires_the_provider():
+    registry = ProviderRegistry(Settings(app_env="test"))
+    registry.register(FakeLLMProvider(), make_default=True)
+    assert "fake" in [p.name for p in registry.available()]
+    await _drive(registry, "fake", ProviderCredentialError("quota exhausted"))
+    assert "fake" not in [
+        p.name for p in registry.available()
+    ], "a retired provider must stop being offered"
+
+
+@pytest.mark.anyio
+async def test_an_ordinary_rate_limit_does_not_retire_the_provider():
+    """A burst of 429s must not disable a provider for everyone.
+
+    This is the failure mode that makes naive health tracking worse than none:
+    treating transient throttling as permanent turns a slow minute into an
+    outage that lasts until someone restarts the process.
+    """
+    registry = ProviderRegistry(Settings(app_env="test"))
+    registry.register(FakeLLMProvider(), make_default=True)
+    await _drive(registry, "fake", ProviderError("rate limited (429)"))
+    assert "fake" in [p.name for p in registry.available()]
+
+
+def test_openai_classifies_quota_exhaustion_as_a_credential_failure():
+    exc = openai.APIStatusError(
+        "quota",
+        response=httpx.Response(429, request=httpx.Request("POST", "https://api.openai.com")),
+        body={"error": {"code": "insufficient_quota"}},
+    )
+    assert isinstance(_openai_classify(exc), ProviderCredentialError)
+
+
+def test_openai_treats_a_plain_rate_limit_as_transient():
+    exc = openai.APIStatusError(
+        "slow down",
+        response=httpx.Response(429, request=httpx.Request("POST", "https://api.openai.com")),
+        body={"error": {"code": "rate_limit_exceeded"}},
+    )
+    classified = _openai_classify(exc)
+    assert isinstance(classified, ProviderError)
+    assert not isinstance(classified, ProviderCredentialError)
+
+
+def test_openai_treats_a_revoked_key_as_a_credential_failure():
+    exc = openai.APIStatusError(
+        "bad key",
+        response=httpx.Response(401, request=httpx.Request("POST", "https://api.openai.com")),
+        body={"error": {"code": "invalid_api_key"}},
+    )
+    assert isinstance(_openai_classify(exc), ProviderCredentialError)

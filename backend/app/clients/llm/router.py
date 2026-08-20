@@ -17,14 +17,16 @@ message, so a user on Auto can see which model actually answered.
 
 from __future__ import annotations
 
+from collections.abc import AsyncIterator
 from enum import StrEnum
+from typing import Any
 
 from app.clients.llm.anthropic_provider import AnthropicProvider
-from app.clients.llm.base import LLMProvider, ModelSpec
+from app.clients.llm.base import CompletionResult, LLMProvider, ModelSpec, StreamChunk
 from app.clients.llm.ollama_provider import OllamaProvider
 from app.clients.llm.openai_provider import OpenAIProvider
 from app.core.config import Settings
-from app.core.errors import ProviderError, ValidationError
+from app.core.errors import ProviderCredentialError, ProviderError, ValidationError
 from app.core.logging import get_logger
 
 log = get_logger(__name__)
@@ -61,6 +63,54 @@ _TIER_FALLBACK: dict[str, list[str]] = {
     "balanced": ["balanced", "frontier", "fast"],
     "frontier": ["frontier", "balanced", "fast"],
 }
+
+
+class _HealthTracked(LLMProvider):
+    """Delegates to a real provider, and retires it when its credential fails.
+
+    A provider whose key is revoked or whose account is out of quota keeps
+    accepting requests and keeps failing them, so Auto mode would route real
+    traffic into a guaranteed error and `GET /models` would advertise models
+    nobody can call. Watching the calls that actually happen is the only way to
+    see it: an exhausted quota is invisible to a startup probe, because listing
+    models still succeeds when completions do not.
+
+    Only `ProviderCredentialError` retires a provider. Ordinary rate limits and
+    upstream blips stay transient by design.
+    """
+
+    def __init__(self, inner: LLMProvider, registry: ProviderRegistry) -> None:
+        self._inner = inner
+        self._registry = registry
+        self.name = inner.name
+
+    def models(self) -> list[ModelSpec]:
+        return self._inner.models()
+
+    def spec_for(self, model: str) -> ModelSpec | None:
+        return self._inner.spec_for(model)
+
+    async def health(self) -> bool:
+        return await self._inner.health()
+
+    def _retire(self, exc: ProviderCredentialError) -> None:
+        log.warning("provider_retired", provider=self.name, detail=exc.detail)
+        self._registry.mark_unavailable(self.name)
+
+    async def generate(self, **kwargs: Any) -> CompletionResult:
+        try:
+            return await self._inner.generate(**kwargs)
+        except ProviderCredentialError as exc:
+            self._retire(exc)
+            raise
+
+    async def stream(self, **kwargs: Any) -> AsyncIterator[StreamChunk]:
+        try:
+            async for chunk in self._inner.stream(**kwargs):
+                yield chunk
+        except ProviderCredentialError as exc:
+            self._retire(exc)
+            raise
 
 
 class ProviderRegistry:
@@ -116,8 +166,12 @@ class ProviderRegistry:
         else:
             raise ValidationError(f"Unknown LLM provider '{name}'.")
 
-        self._cache[name] = provider
-        return provider
+        # Wrapped so a rejected credential retires the provider instead of
+        # failing every request that reaches it. Explicitly registered
+        # providers are left alone: a test double is the caller's to control.
+        tracked = _HealthTracked(provider, self)
+        self._cache[name] = tracked
+        return tracked
 
     def available(self) -> list[LLMProvider]:
         """Every provider that is actually configured.
@@ -126,9 +180,13 @@ class ProviderRegistry:
         so `GET /models` degrades to "what you can actually use" instead of
         failing outright.
         """
-        # An explicitly registered provider is available by definition — its
-        # construction already succeeded.
-        out: list[LLMProvider] = list(self._registered.values())
+        # Registering a provider asserts it works, and `register` clears any
+        # earlier exclusion. It can still be retired afterwards, though, so the
+        # exclusion set is applied uniformly rather than only to the providers
+        # built from configuration.
+        out: list[LLMProvider] = [
+            provider for name, provider in self._registered.items() if name not in self._unavailable
+        ]
         for name in ("anthropic", "openai", "ollama"):
             if name in self._registered or name in self._unavailable:
                 continue
