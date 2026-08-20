@@ -253,6 +253,58 @@ def build_meeting_notes_doc(workspace_name: str, topic: str, rng: random.Random)
     )
 
 
+def build_time_off_policy(workspace_name: str) -> str:
+    """Real prose, not the templated filler the other policy docs use.
+
+    The templated documents repeat their subject label as filler and carry no
+    real vocabulary, so they cannot demonstrate semantic retrieval -- there is
+    nothing for a paraphrased question to match on meaning rather than words.
+    This one exists so a demo has at least one document where that distinction
+    is visible: ask about it in different words than the ones written here and
+    a lexical index misses while a semantic one does not.
+    """
+    return (
+        f"# Time Off Policy\n\n"
+        f"## Vacation\n\n"
+        f"Full-time staff at {workspace_name} accrue fifteen vacation days per "
+        f"calendar year, credited monthly. Unused balance carries over into the "
+        f"next year up to a cap of five days; anything beyond that is forfeited "
+        f"at year end.\n\n"
+        f"## Sick Leave\n\n"
+        f"Sick leave is separate from vacation and is not capped. Employees "
+        f"experiencing illness should notify their manager before their shift "
+        f"starts whenever possible.\n\n"
+        f"## Requesting Time Off\n\n"
+        f"Requests for time away should go through the scheduling tool at "
+        f"least one week ahead for anything longer than two consecutive days. "
+        f"Same-day requests are handled at the manager's discretion.\n"
+    )
+
+
+def build_expense_policy(workspace_name: str) -> str:
+    """Real prose with concrete thresholds, for the same reason as the time
+    off policy: something with genuine vocabulary variety and specific facts
+    a paraphrased question, or a request for an exact figure, can be checked
+    against."""
+    return (
+        f"# Expense Approval Policy\n\n"
+        f"## Everyday Purchases\n\n"
+        f"Team members at {workspace_name} can expense purchases under $200 "
+        f"without prior approval; submit the receipt within ten business days "
+        f"and it is reimbursed on the next pay cycle.\n\n"
+        f"## Larger Purchases\n\n"
+        f"Anything from $200 to $2,000 needs sign-off from the requester's "
+        f"manager before the purchase is made, not after. Above $2,000, "
+        f"finance has to approve it as well, and the request should include a "
+        f"one-line justification for why it cannot wait for the next budget "
+        f"cycle.\n\n"
+        f"## What Is Not Covered\n\n"
+        f"Alcohol, personal subscriptions, and anything that could reasonably "
+        f"be mistaken for a gift to a client or vendor are never reimbursable, "
+        f"regardless of amount.\n"
+    )
+
+
 def build_context_note(workspace_name: str) -> str:
     return (
         textwrap.dedent(
@@ -419,6 +471,10 @@ def build_files_for_workspace(
             build_meeting_notes_doc(blueprint.name, "Quarterly retrospective", rng),
         ),
         ("workspace-context.txt", "notes", build_context_note(blueprint.name)),
+        # Real prose, unlike the templated documents above -- see
+        # build_time_off_policy for why that distinction matters for the demo.
+        ("time-off-policy.md", "policy", build_time_off_policy(blueprint.name)),
+        ("expense-policy.md", "policy", build_expense_policy(blueprint.name)),
     ]
 
     csv_builders = [
@@ -464,33 +520,6 @@ def build_files_for_workspace(
         )
 
     return files
-
-
-def _decode_json(text: str, content_type: str) -> object | None:
-    if not text:
-        return None
-    if "json" not in content_type.lower() and not text.lstrip().startswith(("{", "[")):
-        return None
-    return json.loads(text)
-
-
-def _encode_multipart(files) -> tuple[bytes, str]:  # type: ignore[no-untyped-def]
-    boundary = f"----avocado-{uuid.uuid4().hex}"
-    body = bytearray()
-    for field_name, value in files.items():
-        filename, fileobj, content_type = value
-        content = fileobj.read() if hasattr(fileobj, "read") else bytes(fileobj)
-        body.extend(f"--{boundary}\r\n".encode())
-        body.extend(
-            (
-                f'Content-Disposition: form-data; name="{field_name}"; filename="{filename}"\r\n'
-                f"Content-Type: {content_type}\r\n\r\n"
-            ).encode()
-        )
-        body.extend(content)
-        body.extend(b"\r\n")
-    body.extend(f"--{boundary}--\r\n".encode())
-    return bytes(body), f"multipart/form-data; boundary={boundary}"
 
 
 async def request_json(
