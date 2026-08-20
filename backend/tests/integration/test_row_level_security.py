@@ -48,18 +48,17 @@ async def restricted(engine):  # type: ignore[no-untyped-def]
     admin_url = os.environ["DATABASE_URL"]
 
     async with engine.begin() as connection:
-        # Interpolated identifiers only, all module constants — a role name and
-        # table names cannot be bind parameters in DDL.
-        await connection.exec_driver_sql(  # noqa: S608
-            f"""
+        # Interpolated identifiers only, all module constants — a role name
+        # cannot be a bind parameter in DDL.
+        create_role = f"""
             DO $$
             BEGIN
                 IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = '{APP_ROLE}') THEN
                     CREATE ROLE {APP_ROLE} LOGIN NOSUPERUSER NOBYPASSRLS;
                 END IF;
             END $$;
-            """
-        )
+            """  # noqa: S608
+        await connection.exec_driver_sql(create_role)
         await connection.exec_driver_sql(f"ALTER ROLE {APP_ROLE} WITH PASSWORD '{APP_PASSWORD}'")
 
         # The `engine` fixture creates the schema with create_all, which does

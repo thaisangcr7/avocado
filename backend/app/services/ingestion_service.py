@@ -175,9 +175,7 @@ class IngestionService:
         self, document: Document, data: bytes, parsed: ParsedDocument
     ) -> ParsedDocument:
         """Recover a scanned PDF by reading its pages as images."""
-        pages = await asyncio.to_thread(
-            render_pdf_pages, data, max_pages=self._ocr_max_pages
-        )
+        pages = await asyncio.to_thread(render_pdf_pages, data, max_pages=self._ocr_max_pages)
         if not pages:
             raise ValidationError("This PDF appears to be scanned and could not be read.")
 
