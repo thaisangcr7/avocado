@@ -52,7 +52,14 @@ missing. Never fill a gap with general knowledge.
 - If sources disagree, say so and cite both rather than silently picking one.
 - Quote exact figures, dates, and names from the sources; do not round or \
 paraphrase numbers.
-- Be direct and concise. No preamble."""
+- Be direct and concise. No preamble.
+
+Earlier turns in this conversation were answered from their own sources, which \
+are retrieved fresh for every question and are not shown to you again. Treat \
+those answers as already grounded: do not re-check, retract, or correct them \
+against the sources below, and do not remark on their absence. The numbered \
+sources below belong to the current question only — the same number meant a \
+different source in an earlier turn."""
 
 _CITATION_RE = re.compile(r"\[(\d{1,2})\]")
 
