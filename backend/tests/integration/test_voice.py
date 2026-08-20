@@ -93,11 +93,14 @@ async def test_a_recording_becomes_a_retrievable_document(client, account, fake_
 
     # The transcript is now a document, ingested like any other source.
     assert recording["document_id"]
-    document = await client.get(
-        f"/documents/{recording['document_id']}", headers=account["headers"]
-    )
-    assert document.status_code == 200
-    body = document.json()
+
+    # Waited for separately: the recording is marked ready inside
+    # transcription, and its transcript is only ingested afterwards. The two
+    # have their own lifecycles, so a ready recording does not imply a ready
+    # document.
+    from tests.integration.test_documents import wait_for_ready
+
+    body = await wait_for_ready(client, recording["document_id"], account["headers"])
     assert body["status"] == "ready", body.get("error_message")
     assert body["doc_type"] == "audio"
     assert body["chunk_count"] > 0
@@ -117,7 +120,12 @@ async def test_the_transcript_is_answerable_through_normal_retrieval(client, acc
         model="fake-nova",
     )
     response = await upload_recording(client, account, "planning.webm")
-    await wait_for_transcript(client, account, response.json()["recording"]["id"])
+    recording = await wait_for_transcript(client, account, response.json()["recording"]["id"])
+    # Retrieval needs the transcript's *chunks*, which are written by ingestion
+    # after the recording is marked ready — two separate lifecycles.
+    from tests.integration.test_documents import wait_for_ready
+
+    await wait_for_ready(client, recording["document_id"], account["headers"])
 
     conversation = await client.post(
         f"/workspaces/{account['workspace_id']}/conversations",
