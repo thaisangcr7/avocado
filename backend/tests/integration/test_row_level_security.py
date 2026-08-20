@@ -58,9 +58,7 @@ async def restricted(engine):  # type: ignore[no-untyped-def]
             END $$;
             """
         )
-        await connection.exec_driver_sql(
-            f"ALTER ROLE {APP_ROLE} WITH PASSWORD '{APP_PASSWORD}'"
-        )
+        await connection.exec_driver_sql(f"ALTER ROLE {APP_ROLE} WITH PASSWORD '{APP_PASSWORD}'")
 
         # The `engine` fixture creates the schema with create_all, which does
         # not run migrations — so the policies are applied here instead.
@@ -161,7 +159,9 @@ async def test_an_unfiltered_query_cannot_cross_the_boundary(restricted, two_ten
     set_identity(workspace_id=alice["workspace_id"])
     async with factory() as session:
         # Deliberately no WHERE clause — this is the forgotten filter.
-        bodies = (await session.execute(text("SELECT content FROM document_chunks"))).scalars().all()
+        bodies = (
+            (await session.execute(text("SELECT content FROM document_chunks"))).scalars().all()
+        )
 
     joined = " ".join(bodies)
     assert "ALPHA-SECRET-8817" in joined, "the tenant's own data should be readable"
@@ -208,7 +208,9 @@ async def test_a_user_identity_reaches_their_own_workspaces(restricted, two_tena
     set_identity(user_id=alice_id)
 
     async with factory() as session:
-        bodies = (await session.execute(text("SELECT content FROM document_chunks"))).scalars().all()
+        bodies = (
+            (await session.execute(text("SELECT content FROM document_chunks"))).scalars().all()
+        )
 
     joined = " ".join(bodies)
     assert "ALPHA-SECRET-8817" in joined

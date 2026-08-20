@@ -182,3 +182,91 @@ async def test_workspace_stats_reflect_ingested_content(client, account):
     assert stats["document_count"] == 1
     assert stats["ready_document_count"] == 1
     assert stats["chunk_count"] > 0
+
+
+async def test_a_scanned_pdf_is_recovered_by_reading_its_pages(client, account, fake_llm):
+    """A scanned PDF has pages but no text layer. Without a fallback it ingests
+    as empty and is invisible to retrieval — which reads to the user as the
+    upload simply not working."""
+    from tests.unit.test_rasterize import build_scanned_pdf
+
+    fake_llm.responses = [
+        "INVOICE 2026-0042. Total due: 1,250.00 EUR. Payable within 30 days.",
+        "Terms and conditions continued on this page.",
+    ]
+
+    response = await upload(client, account, "scan.pdf", build_scanned_pdf(2), "application/pdf")
+    assert response.status_code == 201
+
+    document = await wait_for_ready(client, response.json()["document"]["id"], account["headers"])
+    assert document["status"] == "ready", document.get("error_message")
+    assert document["chunk_count"] > 0
+
+    metadata = document["doc_metadata"]
+    assert metadata["parser"] == "vision-ocr"
+    assert metadata["ocr_fallback"] == "used"
+    assert metadata["ocr_pages_read"] == 2
+    assert metadata["ocr_pages_skipped"] == 0
+
+
+async def test_a_recovered_scan_is_retrievable(client, account, fake_llm):
+    """Recovery is only worth anything if the text becomes searchable."""
+    from tests.unit.test_rasterize import build_scanned_pdf
+
+    # Marker-dense on purpose: the offline hash embedder is lexical, not
+    # semantic, so padding a short marker with unrelated filler drops cosine
+    # similarity below the retrieval threshold for reasons that have nothing to
+    # do with what is under test here.
+    marker = "zylophone quarterly reconciliation 8817"
+    fake_llm.responses = [(marker + " ") * 12]
+
+    uploaded = await upload(client, account, "scan.pdf", build_scanned_pdf(1), "application/pdf")
+    await wait_for_ready(client, uploaded.json()["document"]["id"], account["headers"])
+
+    conversation = await client.post(
+        f"/workspaces/{account['workspace_id']}/conversations", json={}, headers=account["headers"]
+    )
+    fake_llm.responses = ["Found it. [1]"]
+    reply = await client.post(
+        f"/workspaces/{account['workspace_id']}/conversations/{conversation.json()['id']}/messages",
+        json={"content": marker},
+        headers=account["headers"],
+    )
+
+    citations = reply.json()["assistant_message"]["citations"]
+    assert citations, "the recovered scan should be retrievable"
+    assert citations[0]["document_name"] == "scan.pdf"
+
+
+async def test_a_truncated_scan_records_what_it_skipped(client, account, fake_llm, app):
+    """Every page costs a vision call, so the read is bounded — and the
+    omission has to be visible rather than silent."""
+    from tests.unit.test_rasterize import build_scanned_pdf
+
+    app.state.settings.ocr_max_pages = 2
+    fake_llm.responses = ["Page one text.", "Page two text."]
+
+    uploaded = await upload(
+        client, account, "long-scan.pdf", build_scanned_pdf(6), "application/pdf"
+    )
+    document = await wait_for_ready(client, uploaded.json()["document"]["id"], account["headers"])
+
+    assert document["status"] == "ready", document.get("error_message")
+    assert document["doc_metadata"]["ocr_pages_read"] == 2
+    assert document["doc_metadata"]["ocr_pages_skipped"] == 4
+    app.state.settings.ocr_max_pages = 20
+
+
+async def test_a_scan_that_yields_no_text_fails_with_a_reason(client, account, fake_llm):
+    """Better a document marked failed with an explanation than one that
+    silently ingests as empty."""
+    from tests.unit.test_rasterize import build_scanned_pdf
+
+    fake_llm.responses = ["", ""]
+    uploaded = await upload(
+        client, account, "blank-scan.pdf", build_scanned_pdf(2), "application/pdf"
+    )
+    document = await wait_for_ready(client, uploaded.json()["document"]["id"], account["headers"])
+
+    assert document["status"] == "failed"
+    assert "scanned" in document["error_message"].lower()

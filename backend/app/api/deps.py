@@ -369,6 +369,7 @@ def get_ingestion_service(
     storage: StorageDep,
     embeddings: EmbeddingsDep,
     router: RouterDep,
+    settings: SettingsDep,
 ) -> IngestionService:
     return IngestionService(
         documents=documents,
@@ -377,6 +378,8 @@ def get_ingestion_service(
         storage=storage,
         embeddings=embeddings,
         router=router,
+        ocr_enabled=settings.ocr_fallback_enabled,
+        ocr_max_pages=settings.ocr_max_pages,
     )
 
 

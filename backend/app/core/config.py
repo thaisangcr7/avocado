@@ -102,6 +102,13 @@ class Settings(BaseSettings):
     # provider connection open indefinitely.
     voice_stream_max_seconds: int = Field(default=300, ge=10, le=3600)
 
+    # --- Scanned documents ---------------------------------------------
+    # A PDF with pages but no extractable text is a scan. Each page recovered
+    # this way costs a vision call, so the page budget is a cost control as
+    # much as a performance one.
+    ocr_fallback_enabled: bool = True
+    ocr_max_pages: int = Field(default=20, ge=1, le=200)
+
     # --- Uploads -------------------------------------------------------
     max_upload_mb: int = Field(default=25, ge=1, le=500)
 

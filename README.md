@@ -67,6 +67,22 @@ unless *both* are set, and the client asks `GET /voice/capabilities` before
 showing a microphone — so an unconfigured server hides the feature rather than
 offering a button that fails when pressed.
 
+### Enabling row-level security
+
+RLS is enforced against the **connecting role**. A superuser — or the table
+owner without `FORCE` — ignores every policy, so running the application as the
+database owner leaves RLS enabled and doing nothing. Create the restricted role
+and point the app at it:
+
+```bash
+psql "$DATABASE_ADMIN_URL" -v app_password="$(python3 -c 'import secrets;print(secrets.token_urlsafe(24))')" -f scripts/create_app_role.sql
+```
+
+Then set `DATABASE_URL` to connect as `avocado_app`, and `DATABASE_ADMIN_URL`
+to the owner so Alembic can still alter tables. The app refuses to start in
+staging or production when its role can bypass RLS, and logs a warning in
+development.
+
 ### Running the backend directly
 
 ```bash
@@ -234,12 +250,6 @@ actually ran, so Auto is never opaque.
 
 - **Text-to-speech** (architecture §9, listed as a stretch) is not built —
   voice is input-only.
-- **Postgres row-level security** (§13) is not enabled. Tenant isolation is
-  enforced at the repository layer and covered by tests; RLS would be a second,
-  independent layer. It is deferred rather than half-done: with connection
-  pooling it needs a per-transaction session variable set on every request and
-  on every worker job, and a partial implementation gives the appearance of
-  defence in depth without the substance.
 - **Document supersession is represented but not derived.** A newer policy can
   point at the one it replaces, and reclassification bumps a version, but
   automatically *detecting* that one document supersedes another needs identity
@@ -251,8 +261,6 @@ actually ran, so Auto is never opaque.
 - **A failed generation leaves an orphaned user message.** The question is
   persisted before generation, so if the model call fails the thread shows the
   question with no answer on reload. The error is surfaced at request time.
-- **Scanned PDFs** are detected (`likely_scanned`) but the OCR fallback is not
-  wired up; they currently ingest with no text.
 - **Live dictation is not persisted.** The socket exists so a question can be
   spoken instead of typed; nothing is stored. Use the recorder for anything
   that should become knowledge.

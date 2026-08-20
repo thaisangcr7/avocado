@@ -14,6 +14,7 @@ from app.clients.embeddings.base import EmbeddingProvider
 from app.clients.llm.router import ModelRouter
 from app.clients.storage.base import StorageClient
 from app.clients.stt.base import TranscriptionClient
+from app.core.config import get_settings
 from app.core.logging import get_logger
 from app.db.rls import set_identity
 from app.db.session import session_scope
@@ -58,6 +59,7 @@ async def ingest_document(
             )
             return
 
+        _settings = get_settings()
         chunks = ChunkRepository(session)
         service = IngestionService(
             documents=documents,
@@ -66,6 +68,8 @@ async def ingest_document(
             storage=storage,
             embeddings=embeddings,
             router=router,
+            ocr_enabled=_settings.ocr_fallback_enabled,
+            ocr_max_pages=_settings.ocr_max_pages,
         )
         await service.process(document)
 
