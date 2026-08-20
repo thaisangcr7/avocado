@@ -41,10 +41,17 @@ Generate a secret key and put it in `.env`:
 python3 -c "import secrets; print(secrets.token_urlsafe(48))"
 ```
 
-Build the analysis sandbox image (the API shells out to it):
+Build the analysis sandbox image (the runner shells out to it):
 
 ```bash
 docker build -t avocado-sandbox:latest ./sandbox
+```
+
+Generate the shared secret between the API and the sandbox runner, and put it
+in `.env` as `SANDBOX_AUTH_TOKEN`:
+
+```bash
+python3 -c "import secrets; print(secrets.token_urlsafe(32))"
 ```
 
 Bring up the stack:
@@ -241,6 +248,14 @@ nudges is rejected wholesale: a lost deadline is worse than an unpolished
 sentence. Suggestion ids are content hashes, so a client-side dismissal
 survives regeneration without the server storing one.
 
+**The API never holds the Docker socket.** Analysis is delegated to a separate
+sandbox runner, which is the only container with the socket and does nothing
+else — no database, no model access, no tenant data beyond one run's inputs.
+Compromising the API therefore does not mean owning the host. The limits are
+the runner's own configuration and are not part of the request, because a
+caller that could name its own timeout and memory ceiling could name unlimited
+ones. Config refuses to start on the local-daemon backend outside development.
+
 **The dictation socket authenticates from its first message**, not a query
 parameter. `WebSocket` cannot set an `Authorization` header, and a token in a
 URL lands in access logs, proxy history and browser history. Workspace access
@@ -268,10 +283,6 @@ actually ran, so Auto is never opaque.
 - **Live dictation is not persisted.** The socket exists so a question can be
   spoken instead of typed; nothing is stored. Use the recorder for anything
   that should become knowledge.
-- **`docker-compose` mounts the Docker socket into the API** so it can start
-  sandbox containers as siblings. That grants the API control of the host
-  daemon — fine locally, but a real deployment wants a remote sandbox service or
-  a dedicated daemon.
 
 ---
 

@@ -41,9 +41,11 @@ services:
     environment:
       DATABASE_URL: postgresql+asyncpg://avocado:avocado@db:5432/avocado
       REDIS_URL: redis://redis:6379/0
-      # The API shells out to `docker run` for analysis, so the sandbox image
-      # is built on the host, not inside this container.
-      SANDBOX_IMAGE: avocado-sandbox:latest
+      # Analysis is delegated to the sandbox runner, so this container never
+      # holds the Docker socket — and so never has root on the host.
+      SANDBOX_BACKEND: http
+      SANDBOX_URL: http://sandbox:8080
+      SANDBOX_AUTH_TOKEN: ${SANDBOX_AUTH_TOKEN:?set SANDBOX_AUTH_TOKEN in .env}
     ports:
       - "8000:8000"
     depends_on:
@@ -51,16 +53,44 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+      sandbox:
+        condition: service_started
     volumes:
       - ./backend:/app
-      # Lets the API start analysis containers as siblings on the host daemon.
-      # Note this grants the API control of the host Docker daemon — acceptable
-      # for local development, and replaced by a remote sandbox service or a
-      # dedicated daemon in a real deployment.
-      - /var/run/docker.sock:/var/run/docker.sock
     command: >
       sh -c "alembic upgrade head &&
              uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload"
+
+  sandbox:
+    # The only container that holds the Docker socket. It runs analysis code and
+    # nothing else: no database, no model access, no tenant data beyond the rows
+    # it is handed for a single run. Compromising the API therefore no longer
+    # means owning the host.
+    # Named explicitly: compose would otherwise derive "avocado-sandbox" from
+    # the project and service name, which is the analysis image's tag —
+    # building this service would silently overwrite it, and every analysis
+    # would then start this API instead of the runner.
+    image: avocado-sandbox-runner:latest
+    build:
+      context: .
+      dockerfile: sandbox/Dockerfile.service
+    environment:
+      SANDBOX_IMAGE: avocado-sandbox:latest
+      SANDBOX_AUTH_TOKEN: ${SANDBOX_AUTH_TOKEN:?set SANDBOX_AUTH_TOKEN in .env}
+      # Shared with the host at the same path, so a bind mount created here
+      # resolves to the same directory when the host daemon reads it.
+      SANDBOX_WORK_ROOT: /var/tmp/avocado-sandbox
+      SANDBOX_TIMEOUT_SECONDS: "30"
+      SANDBOX_MEMORY_MB: "512"
+      SANDBOX_CPUS: "1.0"
+    volumes:
+      # Sibling containers on the host daemon. Scoped to this one service
+      # rather than granted to the API.
+      - /var/run/docker.sock:/var/run/docker.sock
+      - /var/tmp/avocado-sandbox:/var/tmp/avocado-sandbox
+    # Not published: reachable only from the compose network.
+    expose:
+      - "8080"
 
   worker:
     build:

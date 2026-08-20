@@ -44,8 +44,16 @@ _DOCKER_OVERHEAD_SECONDS = 10
 class DockerSandbox(Sandbox):
     name = "docker"
 
-    def __init__(self, image: str) -> None:
+    def __init__(self, image: str, *, work_root: str | None = None) -> None:
         self._image = image
+        # Where the per-run directory is created.
+        #
+        # This matters whenever the caller is itself a container talking to the
+        # host daemon: a bind mount source is resolved by the *host*, so a path
+        # that exists only inside this container mounts as an empty directory
+        # and the analysis exits immediately with nothing to read. Pointing
+        # both at the same shared path makes the two agree.
+        self._work_root = work_root or None
 
     async def available(self) -> bool:
         """True only if the daemon responds *and* the sandbox image exists."""
@@ -101,7 +109,7 @@ class DockerSandbox(Sandbox):
         started = time.perf_counter()
         container_name = f"avocado-analysis-{uuid.uuid4().hex[:12]}"
 
-        with tempfile.TemporaryDirectory(prefix="avocado-sandbox-") as tmp:
+        with tempfile.TemporaryDirectory(prefix="avocado-sandbox-", dir=self._work_root) as tmp:
             work_dir = Path(tmp)
             data_dir = work_dir / "data"
             data_dir.mkdir()

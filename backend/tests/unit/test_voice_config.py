@@ -82,3 +82,33 @@ def test_routing_fails_clearly_when_every_provider_was_excluded():
         registry.mark_unavailable(name)
     with pytest.raises(ProviderError, match="No LLM provider is configured"):
         ModelRouter(registry).resolve(task=TaskType.SYNTHESIS)
+
+
+def test_production_refuses_the_docker_sandbox():
+    """Running analysis via a local daemon requires the API to hold the Docker
+    socket, which is root on its host."""
+    import pytest
+
+    from app.core.config import Settings
+
+    with pytest.raises(ValueError, match="Docker socket"):
+        Settings(
+            app_env="production",
+            secret_key="k" * 48,
+            storage_backend="s3",
+            s3_access_key_id="k",
+            s3_secret_access_key="s",
+            embedding_provider="openai",
+            openai_api_key="x",
+            sandbox_backend="docker",
+        )
+
+
+def test_the_http_sandbox_requires_a_shared_secret():
+    """Without one the runner would accept anonymous code execution."""
+    import pytest
+
+    from app.core.config import Settings
+
+    with pytest.raises(ValueError, match="SANDBOX_AUTH_TOKEN"):
+        Settings(app_env="test", sandbox_backend="http")

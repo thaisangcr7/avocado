@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from app.clients.sandbox.base import Sandbox, SandboxLimits
 from app.clients.sandbox.docker_sandbox import DockerSandbox
+from app.clients.sandbox.http_sandbox import HttpSandbox
 from app.core.config import Settings
 
 
@@ -16,7 +17,9 @@ def build_sandbox(settings: Settings) -> Sandbox | None:
     """
     if settings.sandbox_backend == "disabled":
         return None
-    return DockerSandbox(settings.sandbox_image)
+    if settings.sandbox_backend == "http":
+        return HttpSandbox(settings.sandbox_url, settings.sandbox_auth_token or "")
+    return DockerSandbox(settings.sandbox_image, work_root=settings.sandbox_work_root)
 
 
 def build_limits(settings: Settings) -> SandboxLimits:

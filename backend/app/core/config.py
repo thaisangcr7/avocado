@@ -20,7 +20,7 @@ PLACEHOLDER = "CHANGE_ME"
 AppEnv = Literal["development", "test", "staging", "production"]
 StorageBackend = Literal["local", "s3"]
 EmbeddingProvider = Literal["voyage", "openai", "hash"]
-SandboxBackend = Literal["docker", "disabled"]
+SandboxBackend = Literal["docker", "http", "disabled"]
 SttProvider = Literal["deepgram", "disabled"]
 LLMProviderName = Literal["anthropic", "openai", "ollama"]
 
@@ -84,7 +84,15 @@ class Settings(BaseSettings):
     # --- Analysis sandbox ----------------------------------------------
     # These are hard security limits, not tuning knobs. See §13 of the
     # architecture doc: no network, hard timeout, resource caps — every path.
+    # "docker" talks to a local daemon and is the development default; "http"
+    # delegates to the sandbox runner service, which is what a deployment uses
+    # so the API never holds the Docker socket.
     sandbox_backend: SandboxBackend = "docker"
+    sandbox_url: str = "http://sandbox:8080"
+    # Directory the per-run workspace is created in. Must be a path the host
+    # daemon can see when the caller is itself a container.
+    sandbox_work_root: str | None = None
+    sandbox_auth_token: str | None = None
     sandbox_image: str = "avocado-sandbox:latest"
     sandbox_timeout_seconds: int = Field(default=30, ge=1, le=120)
     sandbox_memory_mb: int = Field(default=512, ge=64, le=4096)
@@ -190,6 +198,17 @@ class Settings(BaseSettings):
             raise ValueError("EMBEDDING_PROVIDER=voyage requires VOYAGE_API_KEY.")
         if self.embedding_provider == "openai" and not self.openai_api_key:
             raise ValueError("EMBEDDING_PROVIDER=openai requires OPENAI_API_KEY.")
+        if self.sandbox_backend == "http" and not self.sandbox_auth_token:
+            raise ValueError(
+                "SANDBOX_BACKEND=http requires SANDBOX_AUTH_TOKEN, or the runner "
+                "would accept anonymous code execution."
+            )
+        if self.is_production and self.sandbox_backend == "docker":
+            raise ValueError(
+                "SANDBOX_BACKEND=docker requires the API to hold the Docker "
+                "socket, which grants it root on its host. Use the sandbox "
+                "runner service (SANDBOX_BACKEND=http) outside development."
+            )
         if self.stt_provider == "deepgram" and not self.deepgram_api_key:
             raise ValueError("STT_PROVIDER=deepgram requires DEEPGRAM_API_KEY.")
         if self.storage_backend == "s3" and not (
