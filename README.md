@@ -87,6 +87,15 @@ It writes the source files and a manifest under `backend/.demo-data/`. One
 workspace is intentionally left empty so you can see the honest no-results
 response before you upload anything there.
 
+To reset the local demo database before reseeding, run:
+
+```bash
+python backend/scripts/generate_demo_data.py --reset --base-url http://localhost:8000
+```
+
+That truncates the local Postgres tables in the compose stack, so use it only
+against your local demo environment.
+
 ### Enabling row-level security
 
 RLS is enforced against the **connecting role**. A superuser — or the table

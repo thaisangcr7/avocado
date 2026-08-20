@@ -21,6 +21,7 @@ import re
 import shutil
 import string
 import textwrap
+import subprocess
 import uuid
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta, timezone
@@ -617,11 +618,73 @@ def build_manifest_path(output_dir: Path) -> Path:
     return output_dir / "manifest.json"
 
 
+def reset_local_database() -> None:
+    container_result = subprocess.run(
+        ["docker", "ps", "--filter", "name=avocado-db", "--format", "{{.Names}}"],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    container_name = next((line.strip() for line in container_result.stdout.splitlines() if line.strip()), None)
+    if container_name is None:
+        raise RuntimeError("Could not find the running avocado-db container. Start the compose stack first.")
+
+    tables_result = subprocess.run(
+        [
+            "docker",
+            "exec",
+            "-i",
+            container_name,
+            "psql",
+            "-U",
+            "avocado",
+            "-d",
+            "avocado",
+            "-At",
+            "-c",
+            "SELECT string_agg(format('%I.%I', schemaname, tablename), ', ') "
+            "FROM pg_tables WHERE schemaname = 'public' AND tablename <> 'alembic_version';",
+        ],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    tables = tables_result.stdout.strip()
+    if not tables:
+        return
+
+    truncate = subprocess.run(
+        [
+            "docker",
+            "exec",
+            "-i",
+            container_name,
+            "psql",
+            "-U",
+            "avocado",
+            "-d",
+            "avocado",
+            "-c",
+            f"TRUNCATE TABLE {tables} RESTART IDENTITY CASCADE;",
+        ],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    if truncate.returncode != 0:
+        raise RuntimeError(truncate.stderr.strip() or "Reset failed.")
+
+
 async def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--base-url", default=DEFAULT_BASE_URL, help="Avocado API base URL")
     parser.add_argument("--output-dir", default=str(DEFAULT_OUTPUT_DIR), help="Directory for generated source files and manifest")
     parser.add_argument("--rows-per-csv", type=int, default=800, help="Rows to generate for each sample CSV")
+    parser.add_argument(
+        "--reset",
+        action="store_true",
+        help="Clear the local demo database before seeding.",
+    )
     args = parser.parse_args()
 
     base_url = normalize_base_url(args.base_url)
@@ -629,6 +692,9 @@ async def main() -> None:
     if output_dir.exists():
         shutil.rmtree(output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
+
+    if args.reset:
+        reset_local_database()
 
     blueprints = [
         WorkspaceBlueprint(slugify("Northwind HQ"), "Northwind HQ", "Operations workspace with policies and meeting notes.", True),
