@@ -112,6 +112,8 @@ async def two_tenants(client):  # type: ignore[no-untyped-def]
     alice = await register_account(client, email="alice@alpha.com", org="Alpha")
     bob = await register_account(client, email="bob@beta.com", org="Beta")
 
+    from tests.integration.test_documents import wait_for_ready
+
     for account, marker in ((alice, "ALPHA-SECRET-8817"), (bob, "BETA-SECRET-4429")):
         response = await client.post(
             f"/workspaces/{account['workspace_id']}/documents",
@@ -119,6 +121,15 @@ async def two_tenants(client):  # type: ignore[no-untyped-def]
             headers=account["headers"],
         )
         assert response.status_code == 201, response.text
+
+        # Waited for deliberately: upload returns as soon as the row exists,
+        # but the chunks these tests read are written by ingestion afterwards.
+        # Without this the suite passes locally, where the in-process job wins
+        # the race, and fails on slower CI.
+        document = await wait_for_ready(
+            client, response.json()["document"]["id"], account["headers"]
+        )
+        assert document["status"] == "ready", document.get("error_message")
 
     return alice, bob
 
