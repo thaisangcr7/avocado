@@ -16,13 +16,17 @@ from app.clients.storage.base import StorageClient
 from app.clients.stt.base import TranscriptionClient
 from app.core.logging import get_logger
 from app.db.session import session_scope
+from app.models.enums import DocumentStatus
 from app.repositories.documents import (
     ChunkRepository,
     DocumentRepository,
     DocumentTableRepository,
 )
+from app.repositories.knowledge import ClassificationRepository
+from app.repositories.tenancy import WorkspaceRepository
 from app.repositories.voice import VoiceRecordingRepository
 from app.services.ingestion_service import IngestionService
+from app.services.knowledge_service import KnowledgeService
 from app.services.voice_service import VoiceService
 
 log = get_logger(__name__)
@@ -49,15 +53,30 @@ async def ingest_document(
             )
             return
 
+        chunks = ChunkRepository(session)
         service = IngestionService(
             documents=documents,
-            chunks=ChunkRepository(session),
+            chunks=chunks,
             tables=DocumentTableRepository(session),
             storage=storage,
             embeddings=embeddings,
             router=router,
         )
         await service.process(document)
+
+        # Tagging runs here so a document joins the knowledge map without
+        # anyone having to ask. It is best-effort by design: an unclassified
+        # document is still a perfectly good, fully retrievable document, and
+        # failing the ingest over a missing tag would be the wrong trade.
+        if document.status is DocumentStatus.READY:
+            await _classify_quietly(
+                session=session,
+                documents=documents,
+                chunks=chunks,
+                router=router,
+                document_id=document_id,
+                workspace_id=workspace_id,
+            )
 
 
 async def arq_ingest_document(ctx: dict[str, Any], document_id: str, workspace_id: str) -> None:
@@ -126,3 +145,28 @@ async def arq_transcribe_recording(
         recording_id=uuid.UUID(recording_id),
         workspace_id=uuid.UUID(workspace_id),
     )
+
+
+async def _classify_quietly(
+    *,
+    session: Any,
+    documents: DocumentRepository,
+    chunks: ChunkRepository,
+    router: ModelRouter,
+    document_id: uuid.UUID,
+    workspace_id: uuid.UUID,
+) -> None:
+    """Tag a freshly ingested document, swallowing any failure."""
+    try:
+        team_id = await WorkspaceRepository(session).get_team_id(workspace_id)
+        knowledge = KnowledgeService(
+            classifications=ClassificationRepository(session),
+            documents=documents,
+            chunks=chunks,
+            router=router,
+        )
+        await knowledge.classify_document(
+            document_id=document_id, workspace_id=workspace_id, team_id=team_id
+        )
+    except Exception:
+        log.debug("post_ingest_classification_skipped", exc_info=True)

@@ -63,6 +63,25 @@ class DocumentRepository(WorkspaceScopedRepository[Document]):
         await self._session.execute(stmt)
         await self._session.flush()
 
+    async def list_recent_failed(
+        self, workspace_id: uuid.UUID, *, limit: int = 10
+    ) -> list[Document]:
+        """Documents that failed ingestion.
+
+        A failed document is invisible to retrieval, so whoever uploaded it
+        needs telling — otherwise they just experience the answers as missing.
+        """
+        stmt = (
+            select(Document)
+            .where(
+                Document.workspace_id == workspace_id,
+                Document.status == DocumentStatus.FAILED,
+            )
+            .order_by(Document.created_at.desc())
+            .limit(limit)
+        )
+        return list((await self._session.execute(stmt)).scalars().all())
+
     async def list_ready(self, workspace_id: uuid.UUID) -> list[Document]:
         stmt = (
             select(Document)
@@ -89,6 +108,21 @@ class ChunkRepository(WorkspaceScopedRepository[DocumentChunk]):
         )
         await self._session.execute(stmt)
         await self._session.flush()
+
+    async def list_visible_for_document(
+        self, document_id: uuid.UUID, workspace_id: uuid.UUID, *, limit: int = 20
+    ) -> list[DocumentChunk]:
+        """A document's chunks in order — its opening text, reassembled."""
+        stmt = (
+            select(DocumentChunk)
+            .where(
+                DocumentChunk.document_id == document_id,
+                DocumentChunk.workspace_id == workspace_id,
+            )
+            .order_by(DocumentChunk.chunk_index)
+            .limit(limit)
+        )
+        return list((await self._session.execute(stmt)).scalars().all())
 
     async def search(
         self,

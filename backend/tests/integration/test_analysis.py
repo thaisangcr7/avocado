@@ -16,6 +16,19 @@ from tests.integration.test_documents import CSV_CONTENT, upload, wait_for_ready
 pytestmark = pytest.mark.anyio
 
 
+def codegen_calls(fake_llm):
+    """Only the analysis code-generation calls.
+
+    Ingestion also classifies a document, so positional indexing into every
+    recorded call would silently point at the wrong one.
+    """
+    return [
+        call
+        for call in fake_llm.calls
+        if (call.get("json_schema") or {}).get("properties", {}).keys() >= {"code"}
+    ]
+
+
 async def seed_spreadsheet(client, account):
     response = await upload(client, account, "sales.csv", CSV_CONTENT, "text/csv")
     assert response.status_code == 201
@@ -80,7 +93,7 @@ async def test_code_that_fails_is_retried_with_the_error(client, account, fake_l
     assert run["status"] == "succeeded"
     assert run["attempt_count"] == 2
     # The retry prompt must actually carry the failure back to the model.
-    retry_prompt = fake_llm.calls[1]["messages"][0]
+    retry_prompt = codegen_calls(fake_llm)[1]["messages"][0]
     assert "KeyError" in retry_prompt
     assert "sales_total" in retry_prompt
 
@@ -156,7 +169,7 @@ async def test_dangerous_generated_code_never_reaches_the_sandbox(
     # The screened attempt is never executed; only the safe retry is.
     assert all("socket" not in code for code in fake_sandbox.executed_code)
     # And the rejection reason is fed back so the retry can avoid it.
-    assert "not permitted" in fake_llm.calls[1]["messages"][0]
+    assert "not permitted" in codegen_calls(fake_llm)[1]["messages"][0]
 
 
 async def test_analysis_fails_closed_when_no_sandbox_is_available(client, account, fake_sandbox):
@@ -254,7 +267,7 @@ async def test_the_model_receives_the_schema_but_never_the_data(client, account,
         headers=account["headers"],
     )
 
-    prompt = fake_llm.calls[0]["messages"][0]
+    prompt = codegen_calls(fake_llm)[0]["messages"][0]
     assert "revenue" in prompt and "region" in prompt  # schema is present
     # The bulk of the rows are not in the prompt.
     assert "12000" not in prompt

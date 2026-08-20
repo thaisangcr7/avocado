@@ -80,6 +80,31 @@ class TaskStatus(StrEnum):
     DONE = "done"
 
 
+class DocumentKind(StrEnum):
+    """What a document *is* to the team, as opposed to what file type it has.
+
+    This is the org knowledge layer (architecture §5): the difference between
+    "a pile of uploaded PDFs" and "a queryable map of what this team does".
+    """
+
+    POLICY = "policy"
+    PROCESS = "process"
+    PROJECT = "project"
+    REFERENCE = "reference"
+    OTHER = "other"
+
+
+class SuggestionKind(StrEnum):
+    """Why a nudge is being shown. Drives its icon and its ordering."""
+
+    TASK_DUE = "task_due"
+    TASK_OVERDUE = "task_overdue"
+    TASK_BLOCKED = "task_blocked"
+    NEW_DOCUMENT = "new_document"
+    UNFINISHED_THREAD = "unfinished_thread"
+    FAILED_DOCUMENT = "failed_document"
+
+
 class ProjectVisibility(StrEnum):
     """Who can see a project's tasks.
 

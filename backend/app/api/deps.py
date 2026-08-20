@@ -34,6 +34,8 @@ from app.repositories.documents import (
     DocumentTableRepository,
 )
 from app.repositories.invitations import InvitationRepository
+from app.repositories.knowledge import ClassificationRepository
+from app.repositories.projects import ProjectRepository, TaskRepository
 from app.repositories.tenancy import (
     MembershipRepository,
     OrganizationRepository,
@@ -48,9 +50,13 @@ from app.services.auth_service import AuthService
 from app.services.chat_service import ChatService
 from app.services.ingestion_service import IngestionService
 from app.services.invitation_service import InvitationService
+from app.services.knowledge_service import KnowledgeService
 from app.services.membership_service import MembershipService
 from app.services.model_service import ModelService
+from app.services.project_service import ProjectService
 from app.services.rag_service import RAGService
+from app.services.suggestion_service import SuggestionService
+from app.services.task_resume_service import TaskResumeService
 from app.services.team_service import TeamService
 from app.services.usage_service import UsageService
 from app.services.workspace_service import WorkspaceService
@@ -144,6 +150,9 @@ RunsDep = Annotated[AnalysisRunRepository, Depends(_repo(AnalysisRunRepository))
 UsageRepoDep = Annotated[UsageRepository, Depends(_repo(UsageRepository))]
 VoiceRecordingsDep = Annotated[VoiceRecordingRepository, Depends(_repo(VoiceRecordingRepository))]
 InvitationsDep = Annotated[InvitationRepository, Depends(_repo(InvitationRepository))]
+ProjectsDep = Annotated[ProjectRepository, Depends(_repo(ProjectRepository))]
+TasksDep = Annotated[TaskRepository, Depends(_repo(TaskRepository))]
+ClassificationsDep = Annotated[ClassificationRepository, Depends(_repo(ClassificationRepository))]
 
 
 # --------------------------------------------------------------------------
@@ -248,6 +257,75 @@ def get_invitation_service(
 
 
 InvitationServiceDep = Annotated[InvitationService, Depends(get_invitation_service)]
+
+
+def get_project_service(
+    projects: ProjectsDep, tasks: TasksDep, access: MembershipServiceDep
+) -> ProjectService:
+    return ProjectService(projects=projects, tasks=tasks, membership_service=access)
+
+
+ProjectServiceDep = Annotated[ProjectService, Depends(get_project_service)]
+
+
+def get_task_resume_service(
+    tasks: TasksDep,
+    projects: ProjectsDep,
+    conversations: ConversationsDep,
+    messages: MessagesDep,
+    router: RouterDep,
+    project_service: ProjectServiceDep,
+) -> TaskResumeService:
+    return TaskResumeService(
+        tasks=tasks,
+        projects=projects,
+        conversations=conversations,
+        messages=messages,
+        router=router,
+        project_service=project_service,
+    )
+
+
+TaskResumeServiceDep = Annotated[TaskResumeService, Depends(get_task_resume_service)]
+
+
+def get_suggestion_service(
+    request: Request,
+    tasks: TasksDep,
+    documents: DocumentsDep,
+    conversations: ConversationsDep,
+    router: RouterDep,
+) -> SuggestionService:
+    return SuggestionService(
+        tasks=tasks,
+        documents=documents,
+        conversations=conversations,
+        router=router,
+        # Suggestions are a digest, not a record: the cache and the
+        # last-visit marker both live in Redis, and both degrade to sensible
+        # defaults when it is absent.
+        redis=getattr(request.app.state, "redis", None),
+    )
+
+
+SuggestionServiceDep = Annotated[SuggestionService, Depends(get_suggestion_service)]
+
+
+def get_knowledge_service(
+    classifications: ClassificationsDep,
+    documents: DocumentsDep,
+    chunks: ChunksDep,
+    router: RouterDep,
+) -> KnowledgeService:
+    return KnowledgeService(
+        classifications=classifications,
+        documents=documents,
+        chunks=chunks,
+        router=router,
+    )
+
+
+KnowledgeServiceDep = Annotated[KnowledgeService, Depends(get_knowledge_service)]
 
 
 def get_workspace_service(

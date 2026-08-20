@@ -4,9 +4,10 @@ from __future__ import annotations
 
 import uuid
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 
 from app.models.conversations import Conversation, Message
+from app.models.enums import MessageRole
 from app.repositories.base import WorkspaceScopedRepository
 
 
@@ -20,6 +21,51 @@ class ConversationRepository(WorkspaceScopedRepository[Conversation]):
             .order_by(Conversation.updated_at.desc())
         )
         return list((await self._session.execute(stmt)).scalars().all())
+
+    async def get_for_task(
+        self, task_id: uuid.UUID, workspace_id: uuid.UUID
+    ) -> Conversation | None:
+        """The thread attached to a task, if it has one."""
+        stmt = select(Conversation).where(
+            Conversation.task_id == task_id,
+            Conversation.workspace_id == workspace_id,
+        )
+        return (await self._session.execute(stmt)).scalars().first()
+
+    async def unfinished_for_user(
+        self, workspace_id: uuid.UUID, user_id: uuid.UUID, *, limit: int = 5
+    ) -> list[Conversation]:
+        """Threads this user started where the last word was theirs.
+
+        A conversation whose final message is from the user is one they asked
+        something in and never came back to — which is exactly the thing worth
+        nudging them about.
+        """
+        last_message = (
+            select(
+                Message.conversation_id,
+                func.max(Message.created_at).label("last_at"),
+            )
+            .group_by(Message.conversation_id)
+            .subquery()
+        )
+        stmt = (
+            select(Conversation)
+            .join(last_message, last_message.c.conversation_id == Conversation.id)
+            .join(
+                Message,
+                (Message.conversation_id == Conversation.id)
+                & (Message.created_at == last_message.c.last_at),
+            )
+            .where(
+                Conversation.workspace_id == workspace_id,
+                Conversation.user_id == user_id,
+                Message.role == MessageRole.USER,
+            )
+            .order_by(Conversation.updated_at.desc())
+            .limit(limit)
+        )
+        return list((await self._session.execute(stmt)).scalars().unique().all())
 
 
 class MessageRepository(WorkspaceScopedRepository[Message]):

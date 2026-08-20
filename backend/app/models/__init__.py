@@ -8,16 +8,19 @@ from app.models.conversations import Conversation, Message
 from app.models.documents import Document, DocumentChunk, DocumentTable
 from app.models.enums import (
     AnalysisStatus,
+    DocumentKind,
     DocumentStatus,
     DocumentType,
     MessageRole,
     ProjectStatus,
     ProjectVisibility,
     Role,
+    SuggestionKind,
     TaskStatus,
     TranscriptStatus,
 )
 from app.models.invitations import Invitation, InvitationStatus
+from app.models.knowledge import DocumentClassification
 from app.models.projects import Project, ProjectMember, Task
 from app.models.tenancy import Organization, Team, TeamMembership, User, Workspace
 from app.models.usage import ApiUsageLog
@@ -29,6 +32,8 @@ __all__ = [
     "ApiUsageLog",
     "Conversation",
     "Document",
+    "DocumentClassification",
+    "DocumentKind",
     "Invitation",
     "InvitationStatus",
     "DocumentChunk",
@@ -43,6 +48,7 @@ __all__ = [
     "ProjectStatus",
     "ProjectVisibility",
     "Role",
+    "SuggestionKind",
     "Task",
     "TaskStatus",
     "Team",

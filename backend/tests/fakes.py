@@ -81,11 +81,13 @@ class FakeLLMProvider(LLMProvider):
             }
         )
         text = self._next()
-        # A schema-constrained call must return valid JSON, exactly as the real
-        # provider guarantees — otherwise the test would not exercise the
-        # parsing path the caller actually has.
-        if json_schema is not None and not text.strip().startswith("{"):
-            text = json.dumps({"code": text, "explanation": "Fake explanation."})
+        # A schema-constrained call returns whatever was scripted, unchanged.
+        # Coercing non-JSON into some default shape would make it impossible to
+        # test how callers handle a provider that ignored the schema — and
+        # would silently hand every schema call the *analysis* shape, which is
+        # only correct for one of them.
+        if json_schema is not None and text is self.default_response:
+            text = json.dumps({"code": "result = df.sum()", "explanation": "Default."})
         return CompletionResult(
             text=text,
             model=model,
