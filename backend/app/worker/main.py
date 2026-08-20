@@ -16,6 +16,7 @@ from app.clients.storage.factory import build_storage_client
 from app.clients.stt.factory import build_transcription_client
 from app.core.config import get_settings
 from app.core.logging import configure_logging, get_logger
+from app.db.rls import install_session_identity
 from app.db.session import create_engine, create_session_factory
 from app.worker.tasks import arq_ingest_document, arq_transcribe_recording
 
@@ -28,6 +29,7 @@ async def startup(ctx: dict[str, Any]) -> None:
 
     engine = create_engine(settings)
     registry = ProviderRegistry(settings)
+    install_session_identity()
 
     ctx["settings"] = settings
     ctx["engine"] = engine

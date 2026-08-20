@@ -27,7 +27,12 @@ target_metadata = Base.metadata
 
 
 def _url() -> str:
-    return get_settings().database_url
+    """Migrations connect as the owner, not as the restricted app role.
+
+    Altering tables and creating policies needs rights the application
+    deliberately does not have.
+    """
+    return get_settings().migration_url
 
 
 def run_migrations_offline() -> None:

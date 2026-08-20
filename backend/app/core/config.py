@@ -47,6 +47,11 @@ class Settings(BaseSettings):
 
     # --- Database ------------------------------------------------------
     database_url: str = "postgresql+asyncpg://avocado:avocado@localhost:5434/avocado"
+    # What *migrations* connect with. The application should connect as a
+    # restricted role that cannot bypass row-level security, while Alembic
+    # needs owner rights to alter tables. Falls back to database_url so a
+    # development machine works with one connection string.
+    database_admin_url: str | None = None
     db_pool_size: int = 10
     db_max_overflow: int = 20
     db_echo: bool = False
@@ -115,6 +120,10 @@ class Settings(BaseSettings):
 
     # --- CORS ----------------------------------------------------------
     cors_origins: str = "http://localhost:5173,http://localhost:3000"
+
+    @property
+    def migration_url(self) -> str:
+        return self.database_admin_url or self.database_url
 
     @property
     def cors_origin_list(self) -> list[str]:

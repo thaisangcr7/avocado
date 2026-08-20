@@ -25,6 +25,7 @@ from app.core.config import Settings, get_settings
 from app.core.errors import AuthenticationError
 from app.core.logging import user_id_var, workspace_id_var
 from app.core.security import decode_token
+from app.db.rls import set_identity
 from app.models.tenancy import User, Workspace
 from app.repositories.analysis import AnalysisRunRepository
 from app.repositories.conversations import ConversationRepository, MessageRepository
@@ -179,6 +180,9 @@ async def get_current_user(
         raise AuthenticationError("Invalid token.")
 
     user_id_var.set(str(user.id))
+    # Declared here, the moment identity is known, so row-level security can
+    # scope every subsequent query in this request.
+    set_identity(user_id=user.id)
     return user
 
 
@@ -467,6 +471,7 @@ async def get_workspace_context(
 ) -> WorkspaceContext:
     workspace = await service.require_access(workspace_id, user.id)
     workspace_id_var.set(str(workspace.id))
+    set_identity(workspace_id=workspace.id)
     return WorkspaceContext(workspace=workspace, user=user)
 
 

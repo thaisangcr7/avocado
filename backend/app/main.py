@@ -26,6 +26,7 @@ from app.clients.storage.factory import build_storage_client
 from app.clients.stt.factory import build_transcription_client
 from app.core.config import Settings, get_settings
 from app.core.logging import configure_logging, get_logger
+from app.db.rls import install_session_identity, verify_enforcement
 from app.db.session import create_engine, create_session_factory
 from app.worker.dispatch import (
     build_ingest_scheduler,
@@ -117,6 +118,10 @@ async def lifespan(app: FastAPI):  # type: ignore[no-untyped-def]
     engine = create_engine(settings)
     registry = ProviderRegistry(settings)
 
+    # Re-applies the acting identity on every transaction, so row-level
+    # security keeps working across the commits services make constantly.
+    install_session_identity()
+
     app.state.settings = settings
     app.state.engine = engine
     app.state.session_factory = create_session_factory(engine)
@@ -127,6 +132,18 @@ async def lifespan(app: FastAPI):  # type: ignore[no-untyped-def]
     app.state.sandbox = build_sandbox(settings)
     app.state.sandbox_limits = build_limits(settings)
     app.state.transcriber = build_transcription_client(settings)
+    rls_enforced, rls_detail = await verify_enforcement(engine)
+    if settings.is_production and not rls_enforced:
+        # Silent by nature: policies can be enabled, forced, and completely
+        # ignored, with nothing in the application behaving differently.
+        raise RuntimeError(
+            f"Row-level security is not enforced — {rls_detail}. Connect as a "
+            "restricted role (see scripts/create_app_role.sql) or the second "
+            "isolation layer is decorative."
+        )
+    if not rls_enforced:
+        log.warning("rls_not_enforced", detail=rls_detail)
+
     await _probe_ollama(registry)
     app.state.redis = await _connect_redis(settings)
     app.state.arq_pool = await _connect_queue(settings)
@@ -140,6 +157,7 @@ async def lifespan(app: FastAPI):  # type: ignore[no-untyped-def]
         embeddings=app.state.embeddings.name,
         sandbox=settings.sandbox_backend,
         voice=app.state.transcriber.name if app.state.transcriber else "disabled",
+        rls=rls_detail,
         providers=[p.name for p in registry.available()],
     )
 

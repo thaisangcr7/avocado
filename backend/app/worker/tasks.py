@@ -15,6 +15,7 @@ from app.clients.llm.router import ModelRouter
 from app.clients.storage.base import StorageClient
 from app.clients.stt.base import TranscriptionClient
 from app.core.logging import get_logger
+from app.db.rls import set_identity
 from app.db.session import session_scope
 from app.models.enums import DocumentStatus
 from app.repositories.documents import (
@@ -42,6 +43,10 @@ async def ingest_document(
     workspace_id: uuid.UUID,
 ) -> None:
     """Parse, chunk, embed and persist one document."""
+    # A job has no user, but it does have exactly one workspace — which is a
+    # real scope, not a bypass.
+    set_identity(workspace_id=workspace_id)
+
     async with session_scope(session_factory) as session:
         documents = DocumentRepository(session)
         document = await documents.get_scoped(document_id, workspace_id)
@@ -108,6 +113,8 @@ async def transcribe_recording(
     chunked is invisible to retrieval — which, from the user's point of view,
     means the recording did not work.
     """
+    set_identity(workspace_id=workspace_id)
+
     async with session_scope(session_factory) as session:
         documents = DocumentRepository(session)
         voice = VoiceService(
