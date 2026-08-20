@@ -132,15 +132,32 @@ async def transcribe_recording(
         if document is None:
             return
 
+        _settings = get_settings()
+        chunks = ChunkRepository(session)
         ingestion = IngestionService(
             documents=documents,
-            chunks=ChunkRepository(session),
+            chunks=chunks,
             tables=DocumentTableRepository(session),
             storage=storage,
             embeddings=embeddings,
             router=router,
+            ocr_enabled=_settings.ocr_fallback_enabled,
+            ocr_max_pages=_settings.ocr_max_pages,
         )
         await ingestion.process(document)
+
+        # A transcript is a document like any other, so it joins the knowledge
+        # map the same way an uploaded file does. Without this, a meeting
+        # recording is retrievable but invisible to "what does this team do?".
+        if document.status is DocumentStatus.READY:
+            await _classify_quietly(
+                session=session,
+                documents=documents,
+                chunks=chunks,
+                router=router,
+                document_id=document.id,
+                workspace_id=workspace_id,
+            )
 
 
 async def arq_transcribe_recording(

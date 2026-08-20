@@ -289,3 +289,41 @@ async def test_recordings_do_not_cross_the_tenant_boundary(client):
             headers=alice["headers"],
         )
     ).status_code == 404
+
+
+async def test_a_transcript_joins_the_knowledge_map(client, account, fake_llm):
+    """A transcript is a document like any other. Without classification a
+    meeting recording is retrievable but invisible to 'what does this team
+    do?', which is the whole point of the knowledge layer."""
+    import json
+
+    from tests.integration.test_documents import wait_for_ready
+
+    fake_llm.responses = [
+        json.dumps(
+            {
+                "kind": "process",
+                "title": "Standup notes",
+                "summary": "A recorded discussion of what the team agreed.",
+                "topics": ["standup"],
+                "effective_date": None,
+                "confidence": 0.8,
+            }
+        )
+    ]
+
+    response = await upload_recording(client, account, "standup.webm")
+    recording = await wait_for_transcript(client, account, response.json()["recording"]["id"])
+    await wait_for_ready(client, recording["document_id"], account["headers"])
+
+    classification = await client.get(
+        f"/workspaces/{account['workspace_id']}/documents/{recording['document_id']}/classification",
+        headers=account["headers"],
+    )
+    assert classification.status_code == 200, classification.text
+    assert classification.json()["kind"] == "process"
+
+    knowledge = await client.get(
+        f"/workspaces/{account['workspace_id']}/knowledge", headers=account["headers"]
+    )
+    assert knowledge.json()["unclassified_count"] == 0
