@@ -26,6 +26,7 @@ from app.clients.storage.factory import build_storage_client
 from app.clients.stt.factory import build_transcription_client
 from app.core.config import Settings, get_settings
 from app.core.logging import configure_logging, get_logger
+from app.core.tracing import instrument_app, instrument_engine, setup_tracing
 from app.db.rls import install_session_identity, verify_enforcement
 from app.db.session import create_engine, create_session_factory
 from app.worker.dispatch import (
@@ -122,6 +123,10 @@ async def lifespan(app: FastAPI):  # type: ignore[no-untyped-def]
     # security keeps working across the commits services make constantly.
     install_session_identity()
 
+    # Query spans need the engine, which only exists once the lifespan runs;
+    # the app-level instrumentation in create_app cannot reach it.
+    instrument_engine(settings, engine)
+
     app.state.settings = settings
     app.state.engine = engine
     app.state.session_factory = create_session_factory(engine)
@@ -212,6 +217,11 @@ def create_app() -> FastAPI:
 
     register_exception_handlers(app)
     app.include_router(api_router, prefix=settings.api_v1_prefix)
+
+    # After the routers, so instrumented route names are the real ones rather
+    # than the unnamed placeholders they would be mid-registration.
+    if setup_tracing(settings):
+        instrument_app(app, settings)
 
     @app.get("/", include_in_schema=False)
     async def root() -> dict[str, str]:

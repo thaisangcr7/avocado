@@ -121,6 +121,16 @@ class Settings(BaseSettings):
     # --- Uploads -------------------------------------------------------
     max_upload_mb: int = Field(default=25, ge=1, le=500)
 
+    # --- Tracing ---------------------------------------------------------
+    # Off by default: a tracing stack that cannot reach its collector must
+    # never be the reason the API fails to start.
+    otel_enabled: bool = False
+    otel_service_name: str = "avocado-api"
+    # "console" prints spans locally, which is what makes tracing verifiable
+    # without standing up a collector. "otlp" ships them to otel_endpoint.
+    otel_exporter: Literal["console", "otlp"] = "console"
+    otel_endpoint: str = "http://localhost:4318/v1/traces"
+
     # --- Rate limiting -------------------------------------------------
     rate_limit_enabled: bool = True
     rate_limit_requests: int = 120

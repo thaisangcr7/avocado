@@ -27,6 +27,13 @@ _CONTEXT_VARS = {
 }
 
 
+def _add_trace_context(_logger, _name, event_dict):  # type: ignore[no-untyped-def]
+    """Stamp the active trace id, when tracing is installed and sampling."""
+    from app.core.tracing import add_trace_context
+
+    return add_trace_context(_logger, _name, event_dict)
+
+
 def _bind_request_context(_logger, _name, event_dict):  # type: ignore[no-untyped-def]
     for key, var in _CONTEXT_VARS.items():
         value = var.get()
@@ -82,6 +89,9 @@ def configure_logging(level: str = "INFO", json_output: bool = True) -> None:
         processors=[
             structlog.contextvars.merge_contextvars,
             _bind_request_context,
+            # Joins a log line to the span that produced it, so a slow trace
+            # can be read as its own narrative rather than matched by clock.
+            _add_trace_context,
             structlog.processors.add_log_level,
             structlog.processors.TimeStamper(fmt="iso", utc=True),
             structlog.processors.StackInfoRenderer(),
