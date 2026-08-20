@@ -11,8 +11,8 @@ import uuid
 from contextlib import contextmanager
 
 import pytest
+from fastapi import WebSocketDisconnect
 from fastapi.testclient import TestClient
-from starlette.websockets import WebSocketDisconnect
 
 from tests.conftest import register_account
 

@@ -5,3 +5,5 @@ pytest-cov==6.0.0
 httpx==0.28.1
 asgi-lifespan==2.1.0
 ruff==0.8.6
+# Generates real PDFs with a text layer, for the scanned-PDF tests.
+reportlab==4.2.5
