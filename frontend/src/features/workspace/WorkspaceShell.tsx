@@ -46,6 +46,10 @@ export function WorkspaceShell() {
   const [pane, setPane] = useState<'chat' | 'tasks' | 'knowledge'>('chat')
   const [resumeTaskId, setResumeTaskId] = useState<string | null>(null)
   const [mobilePane, setMobilePane] = useState<MobilePane>('main')
+  // A question picked on the landing pane, held until the conversation it
+  // will be asked in has been created.
+  const [pendingQuestion, setPendingQuestion] = useState<string | null>(null)
+  const startConversation = useCreateConversation(activeWorkspaceId ?? '')
 
   // Opening one main-pane view closes the others, so the pane never has two
   // things claiming it.
@@ -152,6 +156,16 @@ export function WorkspaceShell() {
               workspaceId={workspace.id}
               conversationId={activeConversationId}
               onOpenTask={setResumeTaskId}
+              pendingQuestion={pendingQuestion}
+              onPendingQuestionSent={() => setPendingQuestion(null)}
+              onStartConversation={(question) =>
+                startConversation.mutate(undefined, {
+                  onSuccess: (conversation) => {
+                    setActiveConversationId(conversation.id)
+                    setPendingQuestion(question ?? null)
+                  },
+                })
+              }
             />
           )}
         </main>

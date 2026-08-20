@@ -9,11 +9,12 @@
 
 import { useEffect, useRef, useState } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
+import Markdown from 'react-markdown'
 
 import { streamMessage, type StreamSource } from '@/api/stream'
 import type { Citation, Message } from '@/api/types'
 import { Badge, Button, EmptyState, ErrorNotice, Spinner } from '@/components/ui/primitives'
-import { queryKeys, useMessages, useVoiceCapabilities } from '@/hooks/queries'
+import { queryKeys, useDocuments, useMessages, useVoiceCapabilities } from '@/hooks/queries'
 import { SuggestionsBar } from '@/features/tasks/SuggestionsBar'
 import { VoiceInput } from '@/features/voice/VoiceInput'
 import { cn } from '@/lib/utils'
@@ -23,10 +24,18 @@ export function ChatView({
   workspaceId,
   conversationId,
   onOpenTask,
+  onStartConversation,
+  pendingQuestion,
+  onPendingQuestionSent,
 }: {
   workspaceId: string
   conversationId: string | null
   onOpenTask?: (taskId: string) => void
+  /** Opens a new conversation, optionally seeded with a first question. */
+  onStartConversation?: (question?: string) => void
+  /** A question to ask as soon as this conversation opens. */
+  pendingQuestion?: string | null
+  onPendingQuestionSent?: () => void
 }) {
   const { data: messages, isLoading } = useMessages(workspaceId, conversationId)
   const { data: voice } = useVoiceCapabilities()
@@ -53,11 +62,11 @@ export function ChatView({
     return () => abortRef.current?.abort()
   }, [conversationId])
 
-  async function handleSend() {
-    const question = draft.trim()
+  async function handleSend(explicit?: string) {
+    const question = (explicit ?? draft).trim()
     if (!question || !conversationId || isStreaming) return
 
-    setDraft('')
+    if (!explicit) setDraft('')
     setError(null)
     setStreamingText('')
     setStreamingSources([])
@@ -118,13 +127,22 @@ export function ChatView({
     )
   }
 
+  // A question chosen on the landing pane is sent once the conversation it
+  // belongs to exists. Guarded by a ref so a re-render cannot send it twice.
+  const sentPendingRef = useRef<string | null>(null)
+  useEffect(() => {
+    if (!pendingQuestion || !conversationId || isStreaming) return
+    if (sentPendingRef.current === conversationId) return
+    sentPendingRef.current = conversationId
+    onPendingQuestionSent?.()
+    void handleSend(pendingQuestion)
+    // handleSend is stable enough for this one-shot; re-running on its
+    // identity would re-fire the question.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pendingQuestion, conversationId])
+
   if (!conversationId) {
-    return (
-      <EmptyState
-        title="No conversation selected"
-        description="Start a new conversation to ask a question about this workspace."
-      />
-    )
+    return <StartHere workspaceId={workspaceId} onStart={onStartConversation} />
   }
 
   return (
@@ -223,6 +241,113 @@ export function ChatView({
   )
 }
 
+/**
+ * The landing pane when nothing is open yet.
+ *
+ * Previously a dead end: it said to start a conversation while the button to
+ * do so lived in another column. It now starts one, and offers openings drawn
+ * from the documents actually present — a suggested question that returns
+ * "nothing here answers that" is worse than no suggestion at all.
+ */
+function StartHere({
+  workspaceId,
+  onStart,
+}: {
+  workspaceId: string
+  onStart?: (question?: string) => void
+}) {
+  const { data: documents } = useDocuments(workspaceId)
+  const ready = documents?.items.filter((doc) => doc.status === 'ready') ?? []
+
+  if (!ready.length) {
+    return (
+      <EmptyState
+        title="Nothing to ask about yet"
+        description="Upload a document or a spreadsheet, and questions about it get answered here with citations."
+      />
+    )
+  }
+
+  // Named after real files so the opening question is answerable by
+  // construction, rather than a guess about what the corpus contains.
+  const openings = [
+    `What is in ${ready[0]!.filename}?`,
+    ready.length > 1 ? `Summarise the key points across these ${ready.length} documents.` : null,
+    'What policies does this workspace define?',
+  ].filter((value): value is string => Boolean(value))
+
+  return (
+    <div className="flex h-full items-center justify-center px-6">
+      <div className="w-full max-w-md space-y-5 text-center">
+        <div className="space-y-1.5">
+          <h2 className="text-base font-semibold text-ink">Ask about your documents</h2>
+          <p className="text-sm text-ink-muted">
+            {ready.length} document{ready.length === 1 ? '' : 's'} ready. Every answer cites the
+            passage it came from.
+          </p>
+        </div>
+
+        <div className="space-y-2">
+          {openings.map((question) => (
+            <button
+              key={question}
+              type="button"
+              onClick={() => onStart?.(question)}
+              className="w-full rounded-xl border border-border-subtle bg-surface-raised px-4 py-2.5 text-left text-sm text-ink transition-colors hover:border-accent/40 hover:bg-surface-sunken"
+            >
+              {question}
+            </button>
+          ))}
+        </div>
+
+        <Button variant="secondary" size="sm" onClick={() => onStart?.()}>
+          Or start a blank conversation
+        </Button>
+      </div>
+    </div>
+  )
+}
+
+/**
+ * An assistant answer, rendered as the markdown the model actually writes.
+ *
+ * The models emit bold, italics and lists routinely, so rendering the raw
+ * string left `**five days**` on screen — the exact figure a reader is looking
+ * for, wrapped in punctuation. Markdown is rendered to React elements rather
+ * than injected as HTML, so document text reaching this component through a
+ * model response can never become markup.
+ */
+function AnswerBody({ content }: { content: string }) {
+  return (
+    <div className="space-y-2 [&_li]:ml-4 [&_li]:list-disc [&_ol]:space-y-1 [&_ul]:space-y-1">
+      <Markdown
+        components={{
+          // The bubble sets its own spacing; paragraph margins would double it.
+          p: ({ children }) => <p className="whitespace-pre-wrap">{children}</p>,
+          strong: ({ children }) => <strong className="font-semibold">{children}</strong>,
+          code: ({ children }) => (
+            <code className="rounded bg-surface-sunken px-1 py-0.5 font-mono text-[0.9em]">
+              {children}
+            </code>
+          ),
+          a: ({ children, href }) => (
+            <a
+              href={href}
+              target="_blank"
+              rel="noreferrer noopener"
+              className="underline underline-offset-2"
+            >
+              {children}
+            </a>
+          ),
+        }}
+      >
+        {content}
+      </Markdown>
+    </div>
+  )
+}
+
 function MessageBubble({ message }: { message: Message }) {
   const isUser = message.role === 'user'
 
@@ -246,7 +371,11 @@ function MessageBubble({ message }: { message: Message }) {
               Could not answer
             </p>
           )}
-          <p className="whitespace-pre-wrap">{message.content}</p>
+          {isUser || message.failed ? (
+            <p className="whitespace-pre-wrap">{message.content}</p>
+          ) : (
+            <AnswerBody content={message.content} />
+          )}
         </div>
 
         {!isUser && !message.failed && (
@@ -335,10 +464,12 @@ function StreamingBubble({ text, sources }: { text: string; sources: StreamSourc
       )}
       <div className="rounded-2xl border border-border-subtle bg-surface-raised px-4 py-3 text-sm leading-relaxed text-ink">
         {text ? (
-          <p className="whitespace-pre-wrap">
-            {text}
+          // Rendered the same way as a finished answer, so the text does not
+          // visibly reflow the moment the stream completes.
+          <div className="relative">
+            <AnswerBody content={text} />
             <span className="ml-0.5 inline-block h-4 w-1.5 animate-pulse bg-accent align-text-bottom" />
-          </p>
+          </div>
         ) : (
           <div className="flex items-center gap-2 text-ink-muted">
             <Spinner className="size-3.5" />

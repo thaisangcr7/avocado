@@ -72,9 +72,11 @@ function renderChat(messages: Message[], conversationId: string | null = 'c1') {
 }
 
 describe('ChatView', () => {
-  it('prompts to pick a conversation when none is selected', () => {
+  it('says what is missing when there is nothing to ask about', () => {
+    // No documents in the fixture, so the landing pane points at the gap that
+    // actually blocks the user rather than at the conversation list.
     renderChat([], null)
-    expect(screen.getByText(/no conversation selected/i)).toBeInTheDocument()
+    expect(screen.getByText(/nothing to ask about yet/i)).toBeInTheDocument()
   })
 
   it('renders both sides of a turn', () => {
