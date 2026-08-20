@@ -26,7 +26,7 @@ class VoyageEmbeddingProvider(EmbeddingProvider):
 
     def __init__(self, api_key: str, model: str = "voyage-3", dim: int = 1024) -> None:
         self._api_key = api_key
-        self._model = model
+        self.model = model
         self.dim = dim
 
     async def embed(self, texts: list[str], *, kind: InputKind = "document") -> list[list[float]]:
@@ -42,7 +42,7 @@ class VoyageEmbeddingProvider(EmbeddingProvider):
                         headers={"Authorization": f"Bearer {self._api_key}"},
                         json={
                             "input": batch,
-                            "model": self._model,
+                            "model": self.model,
                             "input_type": "query" if kind == "query" else "document",
                             "output_dimension": self.dim,
                         },
@@ -69,7 +69,7 @@ class OpenAIEmbeddingProvider(EmbeddingProvider):
         self, api_key: str, model: str = "text-embedding-3-small", dim: int = 1024
     ) -> None:
         self._client = openai.AsyncOpenAI(api_key=api_key, timeout=60.0)
-        self._model = model
+        self.model = model
         self.dim = dim
 
     async def embed(self, texts: list[str], *, kind: InputKind = "document") -> list[list[float]]:
@@ -80,7 +80,7 @@ class OpenAIEmbeddingProvider(EmbeddingProvider):
             batch = texts[start : start + _MAX_BATCH]
             try:
                 response = await self._client.embeddings.create(
-                    model=self._model, input=batch, dimensions=self.dim
+                    model=self.model, input=batch, dimensions=self.dim
                 )
             except openai.APIError as exc:
                 raise ProviderError("OpenAI embedding request failed.") from exc
@@ -102,6 +102,7 @@ class HashingEmbeddingProvider(EmbeddingProvider):
     """
 
     name = "hash"
+    model = "bagofwords"
 
     def __init__(self, dim: int = 1024) -> None:
         self.dim = dim

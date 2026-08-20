@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import io
+import uuid
 
 import pytest
 
@@ -270,3 +271,66 @@ async def test_a_scan_that_yields_no_text_fails_with_a_reason(client, account, f
 
     assert document["status"] == "failed"
     assert "scanned" in document["error_message"].lower()
+
+
+async def test_chunks_record_the_embedding_space_that_produced_them(
+    client, account, app, session_factory
+):
+    """A chunk is only comparable to a query embedded the same way.
+
+    Vectors from different providers are not commensurable, and cosine distance
+    between them returns a plausible number rather than an error, so nothing
+    downstream can notice the mismatch on its own. Retrieval therefore filters
+    on the recorded space, and this test pins both halves: the stamp is written,
+    and a query from a different space matches nothing rather than ranking
+    against vectors it cannot be compared to.
+    """
+    from sqlalchemy import select
+
+    from app.models.documents import DocumentChunk
+    from app.repositories.documents import ChunkRepository
+
+    created = await upload(
+        client,
+        account,
+        "spaces.txt",
+        b"Expense approvals above five thousand dollars require the finance lead." * 20,
+        "text/plain",
+    )
+    document = await wait_for_ready(client, created.json()["document"]["id"], account["headers"])
+    assert document["chunk_count"] > 0
+
+    embeddings = app.state.embeddings
+    workspace_id = uuid.UUID(account["workspace_id"])
+
+    async with session_factory() as session:
+        stored = (
+            (
+                await session.execute(
+                    select(DocumentChunk.embedding_model).where(
+                        DocumentChunk.document_id == uuid.UUID(document["id"])
+                    )
+                )
+            )
+            .scalars()
+            .all()
+        )
+        assert stored, "the document produced no chunks"
+        assert set(stored) == {embeddings.signature}
+
+        repo = ChunkRepository(session)
+        query_vector = await embeddings.embed_one("expense approval limit", kind="query")
+
+        same_space = await repo.search(
+            workspace_id=workspace_id,
+            embedding=query_vector,
+            embedding_model=embeddings.signature,
+        )
+        assert same_space, "the chunk should be found in its own embedding space"
+
+        other_space = await repo.search(
+            workspace_id=workspace_id,
+            embedding=query_vector,
+            embedding_model="openai:text-embedding-3-small:1024",
+        )
+        assert other_space == [], "chunks from another embedding space must not be returned"

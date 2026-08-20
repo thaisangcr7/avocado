@@ -60,6 +60,14 @@ async def readiness(
     checks["llm"] = "ok" if request.app.state.registry.all_models() else "no provider configured"
     checks["embeddings"] = request.app.state.embeddings.name
 
+    # Chunks embedded by a previous provider are invisible to retrieval rather
+    # than wrong, which is the safe failure but a silent one: the corpus looks
+    # present and answers come back empty. Surfacing the count is what tells an
+    # operator a re-index is outstanding.
+    checks["embedding_index"] = await _stale_embedding_summary(
+        session, request.app.state.embeddings.signature
+    )
+
     # Only the database makes this instance unable to serve. A missing sandbox
     # degrades analysis, and missing voice degrades dictation, but upload and
     # Q&A keep working — neither should pull the instance out of the load
@@ -74,3 +82,20 @@ async def readiness(
         environment=settings.app_env,
         checks=checks,
     )
+
+
+async def _stale_embedding_summary(session: SessionDep, signature: str) -> str:
+    """How many indexed chunks belong to a different embedding space."""
+    try:
+        stale = await session.scalar(
+            text(
+                "SELECT count(*) FROM document_chunks "
+                "WHERE embedding IS NOT NULL AND embedding_model IS DISTINCT FROM :signature"
+            ),
+            {"signature": signature},
+        )
+    except Exception as exc:
+        return f"error: {type(exc).__name__}"
+    if not stale:
+        return "ok"
+    return f"{stale} chunk(s) need re-indexing for {signature}"

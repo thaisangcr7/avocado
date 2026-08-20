@@ -323,6 +323,7 @@ class IngestionService:
                     content=piece.content,
                     token_count=estimate_tokens(piece.content),
                     embedding=vector,
+                    embedding_model=self._embeddings.signature,
                     chunk_metadata=piece.metadata,
                 )
                 for index, (piece, vector) in enumerate(zip(pieces, vectors, strict=True))

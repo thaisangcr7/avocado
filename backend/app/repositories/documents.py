@@ -129,6 +129,7 @@ class ChunkRepository(WorkspaceScopedRepository[DocumentChunk]):
         *,
         workspace_id: uuid.UUID,
         embedding: list[float],
+        embedding_model: str,
         limit: int = 8,
         document_ids: list[uuid.UUID] | None = None,
     ) -> list[tuple[DocumentChunk, float, str]]:
@@ -137,6 +138,12 @@ class ChunkRepository(WorkspaceScopedRepository[DocumentChunk]):
         The `workspace_id` predicate sits on the chunk table itself, so tenant
         isolation is part of the same scan as the vector search rather than a
         filter applied to results afterwards.
+
+        `embedding_model` restricts the scan to chunks embedded in the same
+        vector space as the query. Without it, switching providers would rank
+        the query against vectors it cannot be compared to and return confident
+        nonsense; with it, the switch reads as "nothing indexed yet" until the
+        corpus is re-embedded.
 
         Returns (chunk, similarity, document filename). Similarity is
         `1 - cosine_distance`, so higher is better.
@@ -148,6 +155,7 @@ class ChunkRepository(WorkspaceScopedRepository[DocumentChunk]):
             .where(
                 DocumentChunk.workspace_id == workspace_id,
                 DocumentChunk.embedding.is_not(None),
+                DocumentChunk.embedding_model == embedding_model,
             )
         )
         if document_ids:

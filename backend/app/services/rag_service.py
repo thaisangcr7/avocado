@@ -87,6 +87,7 @@ class RAGService:
         hits = await self._chunks.search(
             workspace_id=workspace_id,
             embedding=vector,
+            embedding_model=self._embeddings.signature,
             limit=top_k,
             document_ids=document_ids,
         )

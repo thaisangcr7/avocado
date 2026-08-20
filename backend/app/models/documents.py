@@ -110,6 +110,12 @@ class DocumentChunk(Base, UUIDPrimaryKeyMixin, TimestampMixin):
     token_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     embedding: Mapped[list[float] | None] = mapped_column(Vector(EMBEDDING_DIM))
 
+    # Which vector space `embedding` belongs to, as provider:model:dim. Vectors
+    # from different providers are not comparable, and cosine distance between
+    # them is plausible-looking noise rather than an error, so retrieval filters
+    # on this instead of trusting every stored vector to be commensurable.
+    embedding_model: Mapped[str | None] = mapped_column(String(128), index=True)
+
     # Where this chunk came from, for citation rendering: page number, sheet
     # name, row range, section heading.
     chunk_metadata: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False, default=dict)
