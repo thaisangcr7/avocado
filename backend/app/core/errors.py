@@ -95,6 +95,18 @@ class ProviderCredentialError(ProviderError):
     title = "Provider Credential Rejected"
 
 
+class BudgetExceededError(AvocadoError):
+    """The organization has spent its monthly ceiling.
+
+    402 rather than 429: this is not a rate the caller can wait out within the
+    month, it is a limit someone has to raise.
+    """
+
+    status_code = 402
+    title = "Monthly Budget Exceeded"
+    error_type = "https://avocado.dev/errors/budget-exceeded"
+
+
 class SandboxError(AvocadoError):
     """Analysis code could not be executed safely, or failed while executing."""
 

@@ -18,11 +18,19 @@ class OrganizationResponse(ApiModel):
     name: str
     slug: str
     plan_tier: str
+    monthly_budget_usd: float | None
     created_at: datetime
 
 
 class OrganizationUpdate(BaseModel):
-    name: str = Field(min_length=1, max_length=200)
+    """Both fields optional so either can be changed without restating the other.
+
+    `monthly_budget_usd` is explicitly nullable: null clears the ceiling, which
+    is a different intent from omitting the field and has to stay expressible.
+    """
+
+    name: str | None = Field(default=None, min_length=1, max_length=200)
+    monthly_budget_usd: float | None = Field(default=None, ge=0)
 
 
 class TeamCreate(BaseModel):
@@ -121,3 +129,28 @@ class InvitationAccept(BaseModel):
 
     password: str | None = Field(default=None, min_length=MIN_PASSWORD_LENGTH, max_length=256)
     full_name: str | None = Field(default=None, max_length=200)
+
+
+class UsageModelBreakdown(ApiModel):
+    provider: str
+    model: str
+    calls: int
+    input_tokens: int
+    output_tokens: int
+    cost_usd: float
+    avg_latency_ms: float
+
+
+class UsageSummaryResponse(ApiModel):
+    """Month-to-date spend against the ceiling, and what it went on."""
+
+    period_start: datetime
+    calls: int
+    input_tokens: int
+    output_tokens: int
+    cost_usd: float
+    avg_latency_ms: float
+    monthly_budget_usd: float | None
+    budget_used_fraction: float | None
+    budget_state: str
+    by_model: list[UsageModelBreakdown]

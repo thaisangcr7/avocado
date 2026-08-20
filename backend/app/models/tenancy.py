@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import uuid
 
-from sqlalchemy import Boolean, Enum, ForeignKey, Index, String, UniqueConstraint, func
+from sqlalchemy import Boolean, Enum, Float, ForeignKey, Index, String, UniqueConstraint, func
 from sqlalchemy.dialects.postgresql import UUID as PGUUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -35,6 +35,11 @@ class Organization(Base, UUIDPrimaryKeyMixin, TimestampMixin):
     name: Mapped[str] = mapped_column(String(200), nullable=False)
     slug: Mapped[str] = mapped_column(String(100), nullable=False, unique=True, index=True)
     plan_tier: Mapped[str] = mapped_column(String(50), nullable=False, default="free")
+
+    # Calendar-month spend ceiling in USD. NULL means no ceiling, which is the
+    # right default: a budget nobody set should never be the reason a request
+    # fails. See ModelRouter for what crossing it does.
+    monthly_budget_usd: Mapped[float | None] = mapped_column(Float)
 
     teams: Mapped[list[Team]] = relationship(back_populates="organization")
     users: Mapped[list[User]] = relationship(back_populates="organization")

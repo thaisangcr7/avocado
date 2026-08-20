@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import uuid
+from datetime import UTC, datetime
 
 from fastapi import APIRouter, status
 
@@ -17,6 +18,7 @@ from app.schemas.tenancy import (
     TeamDetailResponse,
     TeamResponse,
     TeamUpdate,
+    UsageSummaryResponse,
 )
 
 router = APIRouter(tags=["teams"])
@@ -43,6 +45,14 @@ async def update_current_organization(
     payload: OrganizationUpdate, user: CurrentUserDep, service: TeamServiceDep
 ) -> OrganizationResponse:
     return await service.update_organization(user.org_id, user.id, payload)
+
+
+@router.get("/organizations/current/usage", response_model=UsageSummaryResponse)
+async def get_organization_usage(
+    user: CurrentUserDep, service: TeamServiceDep
+) -> UsageSummaryResponse:
+    """Month-to-date spend, the ceiling, and what the money went on."""
+    return await service.usage_summary(user.org_id, user.id, now=datetime.now(UTC))
 
 
 @router.get("/organizations/current/members", response_model=list[MemberResponse])

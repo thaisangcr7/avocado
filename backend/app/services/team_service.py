@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import uuid
+from datetime import datetime
 
+from app.clients.llm.router import BUDGET_SOFT_THRESHOLD, BudgetState
 from app.core.errors import ConflictError, NotFoundError, PermissionDeniedError, ValidationError
 from app.core.logging import get_logger
 from app.models.enums import Role
@@ -14,6 +16,7 @@ from app.repositories.tenancy import (
     TeamRepository,
     UserRepository,
 )
+from app.repositories.usage import UsageRepository
 from app.schemas.tenancy import (
     MemberResponse,
     OrganizationResponse,
@@ -22,6 +25,8 @@ from app.schemas.tenancy import (
     TeamDetailResponse,
     TeamResponse,
     TeamUpdate,
+    UsageModelBreakdown,
+    UsageSummaryResponse,
 )
 from app.services.membership_service import MembershipService
 
@@ -36,12 +41,14 @@ class TeamService:
         memberships: MembershipRepository,
         users: UserRepository,
         organizations: OrganizationRepository,
+        usage: UsageRepository,
         membership_service: MembershipService,
     ) -> None:
         self._teams = teams
         self._memberships = memberships
         self._users = users
         self._organizations = organizations
+        self._usage = usage
         self._access = membership_service
 
     # --- organization ------------------------------------------------------
@@ -60,10 +67,57 @@ class TeamService:
         if organization is None:
             raise NotFoundError("Organization not found.")
 
-        organization.name = payload.name
+        fields = payload.model_dump(exclude_unset=True)
+        if "name" in fields and fields["name"] is not None:
+            organization.name = fields["name"]
+        # Present-but-null clears the ceiling; absent leaves it untouched.
+        if "monthly_budget_usd" in fields:
+            organization.monthly_budget_usd = fields["monthly_budget_usd"]
         await self._organizations.commit()
         await self._organizations.refresh(organization)
         return OrganizationResponse.model_validate(organization)
+
+    async def usage_summary(
+        self, org_id: uuid.UUID, user_id: uuid.UUID, *, now: datetime
+    ) -> UsageSummaryResponse:
+        """Month-to-date spend, the ceiling, and the per-model breakdown.
+
+        Restricted to org admins: per-model cost is a commercial detail about
+        the organization, not something every member needs.
+        """
+        await self._access.require_org_role(user_id, Role.ORG_ADMIN)
+        organization = await self._organizations.get(org_id)
+        if organization is None:
+            raise NotFoundError("Organization not found.")
+
+        period_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+        summary = await self._usage.summarise_for_org(org_id, since=period_start)
+        by_model = await self._usage.breakdown_by_model(org_id, since=period_start)
+
+        ceiling = organization.monthly_budget_usd
+        cost = float(summary["cost_usd"])
+        used = cost / ceiling if ceiling else None
+        if not ceiling or ceiling <= 0:
+            state = BudgetState.OK
+        elif cost >= ceiling:
+            state = BudgetState.EXHAUSTED
+        elif cost >= ceiling * BUDGET_SOFT_THRESHOLD:
+            state = BudgetState.CONSTRAINED
+        else:
+            state = BudgetState.OK
+
+        return UsageSummaryResponse(
+            period_start=period_start,
+            calls=int(summary["calls"]),
+            input_tokens=int(summary["input_tokens"]),
+            output_tokens=int(summary["output_tokens"]),
+            cost_usd=cost,
+            avg_latency_ms=float(summary["avg_latency_ms"]),
+            monthly_budget_usd=ceiling,
+            budget_used_fraction=round(used, 4) if used is not None else None,
+            budget_state=state.value,
+            by_model=[UsageModelBreakdown(**row) for row in by_model],
+        )
 
     async def list_org_members(self, org_id: uuid.UUID, user_id: uuid.UUID) -> list[MemberResponse]:
         await self._access.require_org_role(user_id, Role.MEMBER)

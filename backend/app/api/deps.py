@@ -10,6 +10,7 @@ from __future__ import annotations
 import uuid
 from collections.abc import AsyncIterator
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from typing import Annotated
 
 from fastapi import Depends, Request
@@ -17,7 +18,12 @@ from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.clients.embeddings.base import EmbeddingProvider
-from app.clients.llm.router import ModelRouter, ProviderRegistry
+from app.clients.llm.router import (
+    BUDGET_SOFT_THRESHOLD,
+    BudgetState,
+    ModelRouter,
+    ProviderRegistry,
+)
 from app.clients.sandbox.base import Sandbox, SandboxLimits
 from app.clients.storage.base import StorageClient
 from app.clients.stt.base import TranscriptionClient
@@ -93,10 +99,6 @@ def get_registry(request: Request) -> ProviderRegistry:
     return request.app.state.registry
 
 
-def get_router(request: Request) -> ModelRouter:
-    return request.app.state.model_router
-
-
 def get_storage(request: Request) -> StorageClient:
     return request.app.state.storage
 
@@ -120,7 +122,6 @@ def get_transcriber(request: Request) -> TranscriptionClient | None:
 SessionDep = Annotated[AsyncSession, Depends(get_session)]
 SettingsDep = Annotated[Settings, Depends(get_config)]
 RegistryDep = Annotated[ProviderRegistry, Depends(get_registry)]
-RouterDep = Annotated[ModelRouter, Depends(get_router)]
 StorageDep = Annotated[StorageClient, Depends(get_storage)]
 EmbeddingsDep = Annotated[EmbeddingProvider, Depends(get_embeddings)]
 
@@ -189,6 +190,47 @@ async def get_current_user(
 CurrentUserDep = Annotated[User, Depends(get_current_user)]
 
 
+# Budget and the router that respects it are declared here, below the
+# dependencies they consume: the budget is a property of the authenticated
+# caller's organization, so it cannot be resolved any earlier than identity.
+
+
+async def get_budget_state(user: CurrentUserDep, usage: UsageRepoDep, orgs: OrgsDep) -> BudgetState:
+    """Where this organization sits against its monthly ceiling.
+
+    Read once per request and handed to the router, so every call site that
+    resolves a model inherits the same decision without reaching for the
+    database itself.
+    """
+    org = await orgs.get(user.org_id)
+    ceiling = org.monthly_budget_usd if org else None
+    if not ceiling or ceiling <= 0:
+        return BudgetState.OK
+
+    spent = await usage.month_to_date_cost(user.org_id, now=datetime.now(UTC))
+    if spent >= ceiling:
+        return BudgetState.EXHAUSTED
+    if spent >= ceiling * BUDGET_SOFT_THRESHOLD:
+        return BudgetState.CONSTRAINED
+    return BudgetState.OK
+
+
+BudgetStateDep = Annotated[BudgetState, Depends(get_budget_state)]
+
+
+def get_router(request: Request, budget: BudgetStateDep) -> ModelRouter:
+    """A router bound to this request's budget standing.
+
+    The registry it wraps is shared; only the budget decision is per-request,
+    and building a router around it is far cheaper than a database read inside
+    every model resolution.
+    """
+    return ModelRouter(request.app.state.registry, budget=budget)
+
+
+RouterDep = Annotated[ModelRouter, Depends(get_router)]
+
+
 # --------------------------------------------------------------------------
 # Services
 # --------------------------------------------------------------------------
@@ -226,12 +268,14 @@ def get_team_service(
     memberships: MembershipsDep,
     users: UsersDep,
     organizations: OrgsDep,
+    usage: UsageRepoDep,
     access: MembershipServiceDep,
 ) -> TeamService:
     return TeamService(
         teams=teams,
         memberships=memberships,
         users=users,
+        usage=usage,
         organizations=organizations,
         membership_service=access,
     )

@@ -26,7 +26,12 @@ from app.clients.llm.base import CompletionResult, LLMProvider, ModelSpec, Strea
 from app.clients.llm.ollama_provider import OllamaProvider
 from app.clients.llm.openai_provider import OpenAIProvider
 from app.core.config import Settings
-from app.core.errors import ProviderCredentialError, ProviderError, ValidationError
+from app.core.errors import (
+    BudgetExceededError,
+    ProviderCredentialError,
+    ProviderError,
+    ValidationError,
+)
 from app.core.logging import get_logger
 
 log = get_logger(__name__)
@@ -45,6 +50,28 @@ class TaskType(StrEnum):
     VISION_EXTRACTION = "vision_extraction"
     # Correctness-critical: generated code will actually be executed.
     CODE_GENERATION = "code_generation"
+
+
+class BudgetState(StrEnum):
+    """How much of an organization's monthly ceiling is already spent.
+
+    Computed by the service layer, which has the database; consumed by the
+    router, which stays pure so the policy is testable without one.
+    """
+
+    OK = "ok"
+    # Past the soft threshold: keep serving, but stop reaching for the
+    # expensive tier on Auto.
+    CONSTRAINED = "constrained"
+    # At or past the ceiling. Nothing bills further until the month rolls over
+    # or someone raises the budget.
+    EXHAUSTED = "exhausted"
+
+
+# Fraction of the ceiling at which Auto stops choosing frontier models. Chosen
+# so the constrained window is wide enough to notice and act on before spend
+# actually stops.
+BUDGET_SOFT_THRESHOLD = 0.8
 
 
 # Which capability tier Auto should reach for, per task.
@@ -214,14 +241,31 @@ class ProviderRegistry:
 class ModelRouter:
     """Resolves (workspace preference, task type) to a concrete model."""
 
-    def __init__(self, registry: ProviderRegistry) -> None:
+    def __init__(self, registry: ProviderRegistry, *, budget: BudgetState = BudgetState.OK) -> None:
         self._registry = registry
+        # Bound at construction so background work, which has no request to
+        # read a budget from, defaults to unconstrained rather than guessing.
+        self._budget = budget
 
     def resolve(
-        self, *, task: TaskType, preferred_model: str | None = None
+        self,
+        *,
+        task: TaskType,
+        preferred_model: str | None = None,
+        budget: BudgetState | None = None,
     ) -> tuple[LLMProvider, ModelSpec]:
-        # A pinned model wins unconditionally — that is the contract the model
-        # picker makes with the user.
+        budget = budget if budget is not None else self._budget
+        # An exhausted budget stops everything, including a pinned model. A
+        # ceiling that the model picker can opt out of is not a ceiling.
+        if budget is BudgetState.EXHAUSTED:
+            raise BudgetExceededError(
+                "This organization has reached its monthly spend limit. Raise the "
+                "limit or wait for the next billing month."
+            )
+
+        # Otherwise a pinned model wins unconditionally — that is the contract
+        # the model picker makes with the user. Being merely constrained does
+        # not override an explicit choice; it only changes what Auto picks.
         if preferred_model:
             return self._registry.find_model(preferred_model)
 
@@ -233,7 +277,17 @@ class ModelRouter:
             )
 
         wanted_tier = _TASK_TIER[task]
-        for tier in _TIER_FALLBACK[wanted_tier]:
+        tier_order = _TIER_FALLBACK[wanted_tier]
+        if budget is BudgetState.CONSTRAINED and wanted_tier == "frontier":
+            # Downgrade rather than refuse: a cheaper answer beats no answer,
+            # and the spend curve flattens before the ceiling is hit. Frontier
+            # stays last rather than being dropped, so an organization whose
+            # only configured models are frontier still gets served instead of
+            # silently losing generation at 80% of budget.
+            tier_order = ["balanced", "fast", "frontier"]
+            log.info("model_downgraded_for_budget", task=task.value, from_tier=wanted_tier)
+
+        for tier in tier_order:
             # Within a tier, prefer the default provider, then cheapest input.
             candidates = sorted(
                 (m for m in models if m.tier == tier),

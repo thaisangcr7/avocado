@@ -7,9 +7,20 @@ import openai
 import pytest
 
 from app.clients.llm.openai_provider import _classify as _openai_classify
-from app.clients.llm.router import ModelRouter, ProviderRegistry, TaskType, _HealthTracked
+from app.clients.llm.router import (
+    BudgetState,
+    ModelRouter,
+    ProviderRegistry,
+    TaskType,
+    _HealthTracked,
+)
 from app.core.config import Settings
-from app.core.errors import ProviderCredentialError, ProviderError, ValidationError
+from app.core.errors import (
+    BudgetExceededError,
+    ProviderCredentialError,
+    ProviderError,
+    ValidationError,
+)
 from tests.fakes import FakeLLMProvider
 
 
@@ -132,3 +143,47 @@ def test_openai_treats_a_revoked_key_as_a_credential_failure():
         body={"error": {"code": "invalid_api_key"}},
     )
     assert isinstance(_openai_classify(exc), ProviderCredentialError)
+
+
+# --- budget-aware routing --------------------------------------------------
+
+
+def test_an_exhausted_budget_refuses_even_a_pinned_model(registry):
+    """A ceiling the model picker can opt out of is not a ceiling."""
+    router = ModelRouter(registry, budget=BudgetState.EXHAUSTED)
+    with pytest.raises(BudgetExceededError):
+        router.resolve(task=TaskType.SYNTHESIS, preferred_model="fake-fast")
+    with pytest.raises(BudgetExceededError):
+        router.resolve(task=TaskType.SYNTHESIS)
+
+
+def test_a_constrained_budget_downgrades_auto_off_the_frontier(registry):
+    frontier = ModelRouter(registry).resolve(task=TaskType.SYNTHESIS)[1]
+    assert frontier.tier == "frontier"
+
+    constrained = ModelRouter(registry, budget=BudgetState.CONSTRAINED)
+    _, spec = constrained.resolve(task=TaskType.SYNTHESIS)
+    assert spec.tier != "frontier", "a constrained budget should stop reaching for the top tier"
+
+
+def test_a_constrained_budget_still_honours_an_explicit_pin(registry):
+    """Constrained is a hint to Auto, not an override of a deliberate choice.
+
+    The user is under the ceiling and has said which model they want; silently
+    serving a different one would misreport what answered.
+    """
+    router = ModelRouter(registry, budget=BudgetState.CONSTRAINED)
+    _, spec = router.resolve(task=TaskType.SYNTHESIS, preferred_model="fake-frontier")
+    assert spec.id == "fake-frontier"
+
+
+def test_a_constrained_budget_leaves_cheap_tasks_alone(registry):
+    router = ModelRouter(registry, budget=BudgetState.CONSTRAINED)
+    _, spec = router.resolve(task=TaskType.TITLE)
+    assert spec.tier == "fast"
+
+
+def test_budget_defaults_to_unconstrained(registry):
+    """Background work has no request to read a budget from."""
+    _, spec = ModelRouter(registry).resolve(task=TaskType.SYNTHESIS)
+    assert spec.tier == "frontier"
