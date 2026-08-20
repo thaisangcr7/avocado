@@ -25,7 +25,7 @@ Full design: [`docs/architecture.md`](docs/architecture.md).
 | 4 — Team Mastermind | Projects/tasks, suggestions, task resume | Schema only |
 | 5 — Connectors + scale | Google Drive, observability, load test | Not started |
 
-**232 backend tests, 64 frontend tests.** Backend coverage 84%.
+**298 backend tests, 82 frontend tests.** Backend coverage 86%.
 
 ---
 
@@ -183,6 +183,25 @@ same retrieval path as an uploaded PDF, with no parallel code path to keep in
 sync. The audio stays referenced in metadata so a recording can be
 re-transcribed later without asking for it again.
 
+**Authorisation is answered in one place.** `MembershipService` resolves a
+user's *effective* role — the strongest of their team membership and their
+org-wide standing — and every privileged path goes through it. The
+"org admins can administer any team" shortcut is scoped to the admin's own
+organization inside that resolution rather than at call sites, because a check
+that call sites must remember is one a call site will eventually forget.
+
+**Invitation tokens are credentials.** CSPRNG-generated, stored only as a
+SHA-256, returned exactly once, and never logged. Unknown, revoked, used and
+expired invitations all report identically, so nobody can probe which tokens
+existed. The token must travel in a URL for the link to be openable, so logged
+paths and error bodies redact it.
+
+**One account per email address, globally.** Login looks a user up by lowercased
+email with no organization, so two accounts sharing an address made it raise
+rather than authenticate. The schema now enforces what the code assumed. The
+tradeoff is deliberate: one person cannot belong to two organizations with the
+same address — that would require choosing an organization at login.
+
 **The dictation socket authenticates from its first message**, not a query
 parameter. `WebSocket` cannot set an `Authorization` header, and a token in a
 URL lands in access logs, proxy history and browser history. Workspace access
@@ -199,10 +218,16 @@ actually ran, so Auto is never opaque.
 
 - **Text-to-speech** (architecture §9, listed as a stretch) is not built —
   voice is input-only.
+- **Postgres row-level security** (§13) is not enabled. Tenant isolation is
+  enforced at the repository layer and covered by tests; RLS would be a second,
+  independent layer. It is deferred rather than half-done: with connection
+  pooling it needs a per-transaction session variable set on every request and
+  on every worker job, and a partial implementation gives the appearance of
+  defence in depth without the substance.
+- **Invitations are not emailed.** The API returns the link and the UI shows it
+  once for the inviter to send; there is no mail transport wired up.
 - **Projects/tasks and proactive suggestions** (§11) exist as tables and enums
   only; no endpoints yet, by design — they depend on a real multi-user model.
-- **Invite flow** is missing: an organization currently has exactly the user who
-  registered it. Roles and the RBAC check exist and are enforced.
 - **A failed generation leaves an orphaned user message.** The question is
   persisted before generation, so if the model call fails the thread shows the
   question with no answer on reload. The error is surfaced at request time.

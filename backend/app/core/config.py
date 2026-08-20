@@ -103,6 +103,9 @@ class Settings(BaseSettings):
     # --- Rate limiting -------------------------------------------------
     rate_limit_enabled: bool = True
     rate_limit_requests: int = 120
+    # An organization is many people, so its allowance is correspondingly
+    # larger than a single anonymous client's.
+    rate_limit_org_requests: int = 1200
     rate_limit_window_seconds: int = 60
 
     # --- Public URLs ---------------------------------------------------

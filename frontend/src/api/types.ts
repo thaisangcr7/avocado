@@ -171,6 +171,86 @@ export interface AnalysisRun {
   created_at: string
 }
 
+export type Role = 'org_admin' | 'team_admin' | 'member' | 'viewer'
+export type InvitationStatus = 'pending' | 'accepted' | 'revoked' | 'expired'
+
+/** Ordered weakest to strongest, mirroring the backend's rank. */
+export const ROLE_RANK: Record<Role, number> = {
+  viewer: 0,
+  member: 1,
+  team_admin: 2,
+  org_admin: 3,
+}
+
+export const ROLE_LABEL: Record<Role, string> = {
+  org_admin: 'Organization admin',
+  team_admin: 'Team admin',
+  member: 'Member',
+  viewer: 'Viewer',
+}
+
+export function roleAtLeast(role: Role, minimum: Role): boolean {
+  return ROLE_RANK[role] >= ROLE_RANK[minimum]
+}
+
+export interface Organization {
+  id: string
+  name: string
+  slug: string
+  plan_tier: string
+  created_at: string
+}
+
+export interface Team {
+  id: string
+  org_id: string
+  name: string
+  description: string | null
+  created_at: string
+}
+
+export interface TeamDetail extends Team {
+  member_count: number
+  workspace_count: number
+  /** The caller's own standing, so the client can render admin controls. */
+  your_role: Role
+}
+
+export interface Member {
+  user_id: string
+  email: string
+  full_name: string | null
+  role: Role
+  is_active: boolean
+  joined_at: string
+}
+
+export interface Invitation {
+  id: string
+  team_id: string
+  email: string
+  role: Role
+  status: InvitationStatus
+  expires_at: string
+  created_at: string
+}
+
+export interface InvitationCreated {
+  invitation: Invitation
+  accept_url: string
+  /** Returned exactly once — only its hash is stored server-side. */
+  token: string
+}
+
+export interface InvitationPreview {
+  organization_name: string
+  team_name: string
+  email: string
+  role: Role
+  expires_at: string
+  requires_account: boolean
+}
+
 export type TranscriptStatus = 'pending' | 'processing' | 'ready' | 'failed'
 
 export interface VoiceRecording {

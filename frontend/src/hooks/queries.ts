@@ -17,11 +17,13 @@ import {
   authApi,
   conversationApi,
   documentApi,
+  invitationApi,
   modelApi,
+  teamApi,
   workspaceApi,
 } from '@/api/endpoints'
 import { voiceApi } from '@/api/voice'
-import type { Document, DocumentDetail } from '@/api/types'
+import type { Document, DocumentDetail, Role } from '@/api/types'
 
 export const queryKeys = {
   me: ['me'] as const,
@@ -34,6 +36,12 @@ export const queryKeys = {
   conversations: (workspaceId: string) => ['conversations', workspaceId] as const,
   messages: (conversationId: string) => ['messages', conversationId] as const,
   analysisRuns: (documentId: string) => ['analysis-runs', documentId] as const,
+  organization: ['organization'] as const,
+  orgMembers: ['organization', 'members'] as const,
+  teams: ['teams'] as const,
+  team: (id: string) => ['teams', id] as const,
+  teamMembers: (id: string) => ['teams', id, 'members'] as const,
+  invitations: (teamId: string) => ['teams', teamId, 'invitations'] as const,
   voiceCapabilities: ['voice-capabilities'] as const,
   voiceRecordings: (workspaceId: string) => ['voice', workspaceId] as const,
 }
@@ -194,6 +202,96 @@ export function useAnalysisRuns(documentId: string | null) {
     queryKey: queryKeys.analysisRuns(documentId ?? ''),
     queryFn: () => analysisApi.listForDocument(documentId!),
     enabled: Boolean(documentId),
+  })
+}
+
+export function useOrganization() {
+  return useQuery({ queryKey: queryKeys.organization, queryFn: teamApi.organization })
+}
+
+export function useOrgMembers() {
+  return useQuery({ queryKey: queryKeys.orgMembers, queryFn: teamApi.orgMembers })
+}
+
+export function useTeams() {
+  return useQuery({ queryKey: queryKeys.teams, queryFn: teamApi.list })
+}
+
+export function useTeam(teamId: string | null) {
+  return useQuery({
+    queryKey: queryKeys.team(teamId ?? ''),
+    queryFn: () => teamApi.get(teamId!),
+    enabled: Boolean(teamId),
+  })
+}
+
+export function useTeamMembers(teamId: string | null) {
+  return useQuery({
+    queryKey: queryKeys.teamMembers(teamId ?? ''),
+    queryFn: () => teamApi.members(teamId!),
+    enabled: Boolean(teamId),
+  })
+}
+
+export function useCreateTeam() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: teamApi.create,
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: queryKeys.teams }),
+  })
+}
+
+export function useSetMemberRole(teamId: string) {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: ({ userId, role }: { userId: string; role: Role }) =>
+      teamApi.setMemberRole(teamId, userId, role),
+    onSuccess: () => {
+      // The caller may have changed their own standing, so the team detail
+      // (which carries `your_role`) has to be refetched alongside the list.
+      queryClient.invalidateQueries({ queryKey: queryKeys.teamMembers(teamId) })
+      queryClient.invalidateQueries({ queryKey: queryKeys.team(teamId) })
+      queryClient.invalidateQueries({ queryKey: queryKeys.orgMembers })
+    },
+  })
+}
+
+export function useRemoveMember(teamId: string) {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (userId: string) => teamApi.removeMember(teamId, userId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.teamMembers(teamId) })
+      queryClient.invalidateQueries({ queryKey: queryKeys.team(teamId) })
+      queryClient.invalidateQueries({ queryKey: queryKeys.teams })
+    },
+  })
+}
+
+export function useInvitations(teamId: string | null, enabled = true) {
+  return useQuery({
+    queryKey: queryKeys.invitations(teamId ?? ''),
+    queryFn: () => invitationApi.list(teamId!),
+    enabled: Boolean(teamId) && enabled,
+  })
+}
+
+export function useCreateInvitation(teamId: string) {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (payload: { email: string; role: Role }) =>
+      invitationApi.create(teamId, payload),
+    onSuccess: () =>
+      queryClient.invalidateQueries({ queryKey: queryKeys.invitations(teamId) }),
+  })
+}
+
+export function useRevokeInvitation(teamId: string) {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: invitationApi.revoke,
+    onSuccess: () =>
+      queryClient.invalidateQueries({ queryKey: queryKeys.invitations(teamId) }),
   })
 }
 

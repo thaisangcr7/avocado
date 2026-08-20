@@ -9,6 +9,7 @@ import type { Document } from '@/api/types'
 import { AnalysisView } from '@/features/analysis/AnalysisView'
 import { ChatView } from '@/features/chat/ChatView'
 import { DocumentPanel } from '@/features/documents/DocumentPanel'
+import { TeamSettings } from '@/features/teams/TeamSettings'
 import { Badge, Button, Spinner } from '@/components/ui/primitives'
 import {
   useConversations,
@@ -16,6 +17,7 @@ import {
   useCreateWorkspace,
   useDeleteConversation,
   useModels,
+  useTeams,
   useUpdateWorkspace,
   useWorkspaces,
   useWorkspaceStats,
@@ -36,6 +38,7 @@ export function WorkspaceShell() {
   const { activeWorkspaceId, setActiveWorkspace } = useWorkspaceStore()
   const [activeConversationId, setActiveConversationId] = useState<string | null>(null)
   const [analysisDocumentId, setAnalysisDocumentId] = useState<string | null>(null)
+  const [settingsTeamId, setSettingsTeamId] = useState<string | null>(null)
   const [mobilePane, setMobilePane] = useState<MobilePane>('main')
 
   // Settle on a workspace once they load: the stored one if it still exists,
@@ -58,7 +61,13 @@ export function WorkspaceShell() {
 
   return (
     <div className="flex h-screen flex-col bg-surface">
-      <TopBar />
+      <TopBar
+        onOpenTeam={(teamId) => {
+          setSettingsTeamId(teamId)
+          setAnalysisDocumentId(null)
+          setMobilePane('main')
+        }}
+      />
 
       <div className="flex min-h-0 flex-1">
         <aside
@@ -75,6 +84,7 @@ export function WorkspaceShell() {
             onSelect={(id) => {
               setActiveConversationId(id)
               setAnalysisDocumentId(null)
+              setSettingsTeamId(null)
               // Choosing a thread on a phone should show it, not leave the
               // user staring at the list they just picked from.
               setMobilePane('main')
@@ -93,6 +103,11 @@ export function WorkspaceShell() {
             <div className="flex h-full items-center justify-center text-sm text-ink-muted">
               Create a workspace to begin.
             </div>
+          ) : settingsTeamId ? (
+            <TeamSettings
+              teamId={settingsTeamId}
+              onClose={() => setSettingsTeamId(null)}
+            />
           ) : analysisDocumentId ? (
             <AnalysisView
               documentId={analysisDocumentId}
@@ -118,6 +133,7 @@ export function WorkspaceShell() {
               workspaceId={activeWorkspaceId}
               onSelectDocument={(document: Document) => {
                 setAnalysisDocumentId(document.id)
+                setSettingsTeamId(null)
                 setMobilePane('main')
               }}
             />
@@ -168,9 +184,10 @@ function MobileTabBar({
   )
 }
 
-function TopBar() {
+function TopBar({ onOpenTeam }: { onOpenTeam: (teamId: string) => void }) {
   const user = useAuthStore((state) => state.user)
   const signOut = useAuthStore((state) => state.signOut)
+  const { data: teams } = useTeams()
 
   return (
     <header className="flex h-14 shrink-0 items-center justify-between gap-2 border-b border-border-subtle bg-surface-raised px-3 sm:px-4">
@@ -188,6 +205,23 @@ function TopBar() {
       </div>
 
       <div className="flex min-w-0 items-center gap-2 sm:gap-3">
+        {teams && teams.length > 0 && (
+          <label className="flex items-center gap-1.5">
+            <span className="sr-only">Team settings</span>
+            <select
+              value=""
+              onChange={(e) => e.target.value && onOpenTeam(e.target.value)}
+              className="h-8 max-w-[8rem] truncate rounded-lg border border-border-subtle bg-surface px-2 text-sm text-ink sm:max-w-none"
+            >
+              <option value="">Team…</option>
+              {teams.map((team) => (
+                <option key={team.id} value={team.id}>
+                  {team.name}
+                </option>
+              ))}
+            </select>
+          </label>
+        )}
         <ModelPicker />
         {user && (
           <span className="hidden truncate text-sm text-ink-muted lg:inline">

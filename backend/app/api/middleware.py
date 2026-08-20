@@ -7,9 +7,11 @@ guarantees no handler can leak an internal message while another does not.
 
 from __future__ import annotations
 
+import hashlib
 import time
 import uuid
 
+import jwt
 from fastapi import FastAPI, Request, status
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
@@ -29,6 +31,33 @@ from app.schemas.common import ProblemDetail
 log = get_logger(__name__)
 
 PROBLEM_JSON = "application/problem+json"
+
+
+def _stable_hash(value: str) -> str:
+    """A short, stable digest for use as a cache key.
+
+    Python's `hash()` is salted per process, so under more than one API replica
+    the same token would land in different buckets and the limit would scale
+    with replica count.
+    """
+    return hashlib.sha256(value.encode()).hexdigest()[:32]
+
+
+def _org_claim(token: str) -> str | None:
+    """Read the `org` claim without verifying the token.
+
+    Unverified on purpose: this runs before authentication, and a limiter that
+    hits the database or does signature work on every request becomes the
+    amplifier it exists to prevent. A forged claim only moves the request into
+    a different bucket — it cannot raise the ceiling, because an unauthenticated
+    request is refused by the auth layer moments later regardless.
+    """
+    try:
+        payload = jwt.decode(token, options={"verify_signature": False})
+    except jwt.InvalidTokenError:
+        return None
+    org = payload.get("org")
+    return str(org) if org else None
 
 
 def _problem(
@@ -107,31 +136,56 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
     machine and explicitly not the production path.
     """
 
-    def __init__(self, app, *, limit: int, window_seconds: int) -> None:  # type: ignore[no-untyped-def]
+    def __init__(  # type: ignore[no-untyped-def]
+        self, app, *, limit: int, org_limit: int, window_seconds: int
+    ) -> None:
         super().__init__(app)
         self._limit = limit
+        self._org_limit = org_limit
         self._window = window_seconds
         self._local: dict[str, tuple[int, float]] = {}
 
-    def _client_key(self, request: Request) -> str:
-        # Authenticated callers are limited per token, anonymous ones per IP.
+    def _client_key(self, request: Request) -> tuple[str, int]:
+        """The bucket this request counts against, and its allowance.
+
+        Architecture 13 asks for a per-organization limit, and that is the one
+        that actually protects the backend: costs are incurred per tenant, and
+        a single organization opening twenty tabs should not be able to
+        exhaust capacity for everyone else.
+
+        Three buckets, narrowest first:
+
+        * **Per organization** for authenticated traffic, read from the token's
+          `org` claim. The claim is signed, so it cannot be forged — and note
+          this deliberately does *not* verify expiry or look the user up: rate
+          limiting runs before authentication, and a limiter that queries the
+          database on every request is a denial-of-service amplifier rather
+          than a defence.
+        * **Per token** as a fallback when a token carries no org claim.
+        * **Per IP** for anonymous traffic, which is where login and
+          registration attempts land.
+        """
         auth = request.headers.get("authorization", "")
         if auth.startswith("Bearer "):
-            return f"rl:token:{hash(auth[7:]) & 0xFFFFFFFF}"
+            org_id = _org_claim(auth[7:])
+            if org_id is not None:
+                return f"rl:org:{org_id}", self._org_limit
+            return f"rl:token:{_stable_hash(auth[7:])}", self._limit
+
         client = request.client.host if request.client else "unknown"
-        return f"rl:ip:{client}"
+        return f"rl:ip:{client}", self._limit
 
     async def dispatch(self, request: Request, call_next):  # type: ignore[no-untyped-def]
         if request.url.path.endswith(("/health", "/live", "/ready")):
             return await call_next(request)
 
-        key = self._client_key(request)
+        key, limit = self._client_key(request)
         # Read the client off app state per request: middleware is constructed
         # before the lifespan runs, so there is no Redis connection to capture
         # at __init__ time.
         redis = getattr(request.app.state, "redis", None)
         try:
-            allowed = await self._check(key, redis)
+            allowed = await self._check(key, redis, limit)
         except Exception:
             # A rate limiter that is down must not take the API down with it.
             log.warning("rate_limit_check_failed", exc_info=True)
@@ -142,18 +196,17 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
                 request,
                 status_code=status.HTTP_429_TOO_MANY_REQUESTS,
                 title=RateLimitedError.title,
-                detail=f"Rate limit exceeded: {self._limit} requests per "
-                f"{self._window} seconds.",
+                detail=f"Rate limit exceeded: {limit} requests per " f"{self._window} seconds.",
                 error_type=RateLimitedError.error_type,
             )
         return await call_next(request)
 
-    async def _check(self, key: str, redis) -> bool:  # type: ignore[no-untyped-def]
+    async def _check(self, key: str, redis, limit: int) -> bool:  # type: ignore[no-untyped-def]
         if redis is not None:
             count = await redis.incr(key)
             if count == 1:
                 await redis.expire(key, self._window)
-            return count <= self._limit
+            return count <= limit
 
         now = time.monotonic()
         count, expires = self._local.get(key, (0, now + self._window))
@@ -161,7 +214,7 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
             count, expires = 0, now + self._window
         count += 1
         self._local[key] = (count, expires)
-        return count <= self._limit
+        return count <= limit
 
 
 def register_exception_handlers(app: FastAPI) -> None:

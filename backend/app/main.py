@@ -179,6 +179,7 @@ def create_app() -> FastAPI:
         app.add_middleware(
             RateLimitMiddleware,
             limit=settings.rate_limit_requests,
+            org_limit=settings.rate_limit_org_requests,
             window_seconds=settings.rate_limit_window_seconds,
         )
     app.add_middleware(RequestContextMiddleware)

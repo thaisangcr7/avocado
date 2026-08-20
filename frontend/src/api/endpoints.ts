@@ -3,6 +3,14 @@
 import { http, tokenStore, BASE_URL } from './client'
 import type {
   AnalysisRun,
+  Invitation,
+  InvitationCreated,
+  InvitationPreview,
+  Member,
+  Organization,
+  Role,
+  Team,
+  TeamDetail,
   ChatTurn,
   Conversation,
   CurrentUser,
@@ -126,6 +134,52 @@ export const analysisApi = {
   chartUrl: (runId: string) => `${BASE_URL}/analysis-runs/${runId}/chart`,
 
   fetchChart: (runId: string) => http.get<Blob>(`/analysis-runs/${runId}/chart`),
+}
+
+export const teamApi = {
+  organization: () => http.get<Organization>('/organizations/current'),
+
+  renameOrganization: (name: string) =>
+    http.patch<Organization>('/organizations/current', { name }),
+
+  orgMembers: () => http.get<Member[]>('/organizations/current/members'),
+
+  list: () => http.get<Team[]>('/teams'),
+
+  create: (payload: { name: string; description?: string }) =>
+    http.post<TeamDetail>('/teams', payload),
+
+  get: (teamId: string) => http.get<TeamDetail>(`/teams/${teamId}`),
+
+  update: (teamId: string, payload: { name?: string; description?: string }) =>
+    http.patch<TeamDetail>(`/teams/${teamId}`, payload),
+
+  remove: (teamId: string) => http.delete<{ message: string }>(`/teams/${teamId}`),
+
+  members: (teamId: string) => http.get<Member[]>(`/teams/${teamId}/members`),
+
+  setMemberRole: (teamId: string, userId: string, role: Role) =>
+    http.patch<Member>(`/teams/${teamId}/members/${userId}`, { role }),
+
+  removeMember: (teamId: string, userId: string) =>
+    http.delete<{ message: string }>(`/teams/${teamId}/members/${userId}`),
+}
+
+export const invitationApi = {
+  list: (teamId: string) => http.get<Invitation[]>(`/teams/${teamId}/invitations`),
+
+  create: (teamId: string, payload: { email: string; role: Role; expires_in_days?: number }) =>
+    http.post<InvitationCreated>(`/teams/${teamId}/invitations`, payload),
+
+  revoke: (invitationId: string) =>
+    http.delete<{ message: string }>(`/invitations/${invitationId}`),
+
+  // Anonymous: the recipient may have no account yet.
+  preview: (token: string) =>
+    http.get<InvitationPreview>(`/invitations/${token}`, { anonymous: true }),
+
+  accept: (token: string, payload: { password?: string; full_name?: string }) =>
+    http.post<TokenResponse>(`/invitations/${token}/accept`, payload),
 }
 
 export const modelApi = {

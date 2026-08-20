@@ -4,6 +4,8 @@ import { useEffect } from 'react'
 
 import { setSessionExpiredHandler, tokenStore } from '@/api/client'
 import { AuthPage } from '@/features/auth/AuthPage'
+import { InvitePage } from '@/features/invitations/InvitePage'
+import { inviteTokenFromLocation } from '@/features/invitations/route'
 import { WorkspaceShell } from '@/features/workspace/WorkspaceShell'
 import { Spinner } from '@/components/ui/primitives'
 import { useCurrentUser } from '@/hooks/queries'
@@ -12,6 +14,10 @@ import { useAuthStore } from '@/stores/auth'
 export function App() {
   const { user, isAuthenticated, isLoading, setUser, signOut } = useAuthStore()
   const hasToken = Boolean(tokenStore.access)
+
+  // Invitation links are the one route that has to work for a visitor with no
+  // account, so it is resolved before the authentication gate below.
+  const inviteToken = inviteTokenFromLocation(window.location.pathname)
 
   // Restore the session from a stored token on load.
   const { data, isError, isSuccess } = useCurrentUser(hasToken && !user)
@@ -30,6 +36,10 @@ export function App() {
   useEffect(() => {
     setSessionExpiredHandler(signOut)
   }, [signOut])
+
+  if (inviteToken) {
+    return <InvitePage token={inviteToken} />
+  }
 
   if (hasToken && isLoading && !user) {
     return (
