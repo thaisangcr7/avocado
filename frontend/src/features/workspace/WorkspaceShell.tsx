@@ -13,7 +13,7 @@ import { KnowledgeMapView } from '@/features/knowledge/KnowledgeMap'
 import { TaskBoard } from '@/features/tasks/TaskBoard'
 import { TaskResumePanel } from '@/features/tasks/TaskResumePanel'
 import { TeamSettings } from '@/features/teams/TeamSettings'
-import { Badge, Button, Spinner } from '@/components/ui/primitives'
+import { Button, Spinner } from '@/components/ui/primitives'
 import {
   useConversations,
   useCreateConversation,
@@ -246,7 +246,7 @@ function TopBar({
   const { data: teams } = useTeams()
 
   return (
-    <header className="flex h-14 shrink-0 items-center justify-between gap-2 border-b border-border-subtle bg-surface-raised px-3 sm:px-4">
+    <header className="flex h-14 shrink-0 items-center justify-between gap-2 border-b border-border-subtle bg-surface-raised px-3 shadow-[0_1px_2px_rgba(0,0,0,0.03)] sm:px-4">
       <div className="flex min-w-0 items-center gap-2">
         <span className="text-xl" aria-hidden="true">
           🥑
@@ -261,16 +261,19 @@ function TopBar({
       </div>
 
       <div className="flex min-w-0 items-center gap-2 sm:gap-3">
-        <nav className="hidden items-center gap-0.5 sm:flex" aria-label="Views">
+        <nav
+          className="hidden items-center gap-0.5 rounded-xl bg-surface-sunken p-0.5 sm:flex"
+          aria-label="Views"
+        >
           {(['chat', 'tasks', 'knowledge'] as const).map((candidate) => (
             <button
               key={candidate}
               onClick={() => onShowPane(candidate)}
               aria-current={activePane === candidate ? 'page' : undefined}
               className={cn(
-                'rounded-lg px-2.5 py-1 text-sm capitalize transition-colors',
+                'rounded-lg px-3 py-1 text-sm font-medium capitalize transition-colors',
                 activePane === candidate
-                  ? 'bg-accent-soft text-accent-strong'
+                  ? 'bg-surface-raised text-ink shadow-[0_1px_2px_rgba(0,0,0,0.06)]'
                   : 'text-ink-muted hover:text-ink',
               )}
             >
@@ -298,7 +301,10 @@ function TopBar({
         )}
         <ModelPicker />
         {user && (
-          <span className="hidden truncate text-sm text-ink-muted lg:inline">
+          <span
+            title={user.email}
+            className="hidden max-w-[12rem] truncate text-sm text-ink-muted lg:inline"
+          >
             {user.email}
           </span>
         )}
@@ -491,15 +497,19 @@ function WorkspaceFooter({ workspaceId }: { workspaceId: string | null }) {
 
   return (
     <div className="border-t border-border-subtle px-3 py-2.5">
-      <div className="flex flex-wrap gap-1.5">
-        <Badge tone="neutral">{stats.ready_document_count} ready</Badge>
-        {stats.document_count > stats.ready_document_count && (
-          <Badge tone="warning">
-            {stats.document_count - stats.ready_document_count} processing
-          </Badge>
-        )}
-        <Badge tone="neutral">{stats.chunk_count} chunks</Badge>
-      </div>
+      {/* Named rather than bare counts: "28 chunks" reads as jargon to anyone
+          who has not read the ingestion code. */}
+      <p className="text-xs text-ink-muted">
+        <span className="font-medium text-ink">{stats.ready_document_count}</span> document
+        {stats.ready_document_count === 1 ? '' : 's'} searchable
+        <span className="px-1 text-border-subtle">·</span>
+        {stats.chunk_count} passage{stats.chunk_count === 1 ? '' : 's'} indexed
+      </p>
+      {stats.document_count > stats.ready_document_count && (
+        <p className="mt-1 text-xs text-warning">
+          {stats.document_count - stats.ready_document_count} still processing
+        </p>
+      )}
     </div>
   )
 }

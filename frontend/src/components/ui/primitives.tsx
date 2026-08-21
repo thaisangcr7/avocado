@@ -125,7 +125,10 @@ export function Card({ children, className }: { children: ReactNode; className?:
   return (
     <div
       className={cn(
+        // A hairline shadow, not a drop shadow: enough to lift the card off
+        // the page at a glance without the interface looking decorated.
         'rounded-xl border border-border-subtle bg-surface-raised',
+        'shadow-[0_1px_2px_rgba(0,0,0,0.04)]',
         className,
       )}
     >
