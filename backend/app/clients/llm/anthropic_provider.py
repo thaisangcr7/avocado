@@ -117,6 +117,39 @@ def _usage_from(raw: Any) -> Usage:
     )
 
 
+# Anthropic's structured-output schema validator accepts only a subset of JSON
+# Schema and rejects these value-constraint keywords outright. They constrain
+# values, not shape, and the caller re-validates the response against its own
+# Pydantic model, so dropping them for the API request loses nothing.
+_UNSUPPORTED_SCHEMA_KEYS = frozenset(
+    {
+        "minItems",
+        "maxItems",
+        "minLength",
+        "maxLength",
+        "pattern",
+        "minimum",
+        "maximum",
+        "exclusiveMinimum",
+        "exclusiveMaximum",
+        "multipleOf",
+    }
+)
+
+
+def _sanitize_schema(node: Any) -> Any:
+    """Strip value-constraint keywords Anthropic structured outputs rejects."""
+    if isinstance(node, dict):
+        return {
+            key: _sanitize_schema(value)
+            for key, value in node.items()
+            if key not in _UNSUPPORTED_SCHEMA_KEYS
+        }
+    if isinstance(node, list):
+        return [_sanitize_schema(item) for item in node]
+    return node
+
+
 class AnthropicProvider(LLMProvider):
     name = "anthropic"
 
@@ -145,7 +178,9 @@ class AnthropicProvider(LLMProvider):
         if system:
             kwargs["system"] = system
         if json_schema is not None:
-            kwargs["output_config"] = {"format": {"type": "json_schema", "schema": json_schema}}
+            kwargs["output_config"] = {
+                "format": {"type": "json_schema", "schema": _sanitize_schema(json_schema)}
+            }
 
         started = time.perf_counter()
         try:
