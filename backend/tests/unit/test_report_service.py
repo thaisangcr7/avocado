@@ -45,7 +45,22 @@ PLAN = {
     "title": "Northwind HQ Executive Briefing",
     "thesis": "Revenue is ahead of plan, but the support backlog needs a decision.",
     "heading_status": "watch",
-    "kpis": [{"label": "Revenue", "value": "$25.4M", "context": "vs target", "tone": "positive"}],
+    "kpis": [
+        {
+            "source_key": "revenue_by_region|revenue|total",
+            "label": "Revenue",
+            "context": "vs target",
+            "tone": "positive",
+            "format": "compact_currency",
+        },
+        {
+            "source_key": "does_not_exist",
+            "label": "Phantom",
+            "context": None,
+            "tone": "neutral",
+            "format": "number",
+        },
+    ],
     "sections": [
         {
             "title": "Revenue & Growth",
@@ -132,7 +147,11 @@ async def test_report_binds_charts_and_grounds_series():
 
     assert report.title == "Northwind HQ Executive Briefing"
     assert report.heading_status == "watch"
+    # The KPI value is the computed scalar, formatted — not the model's text.
+    # The KPI whose source_key is unknown is dropped.
     assert len(report.kpis) == 1
+    assert report.kpis[0].label == "Revenue"
+    assert report.kpis[0].value == "$25.4M"
     # The unknown-series chart is dropped; only the valid binding survives.
     assert len(report.sections) == 1
     assert len(report.sections[0].charts) == 1

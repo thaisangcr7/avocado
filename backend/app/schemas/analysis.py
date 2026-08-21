@@ -132,6 +132,24 @@ class ReportKpi(StrictAnalysisModel):
     tone: Literal["neutral", "positive", "negative", "warning"] = "neutral"
 
 
+class ReportKpiPlan(StrictAnalysisModel):
+    """A KPI the model selects from computed evidence.
+
+    The model chooses which computed figure to headline and how to format it,
+    but never the number itself: the service fills the value from the profiler's
+    computed scalar named by ``source_key``, so a headline figure can never be
+    one the model invented or mistranscribed.
+    """
+
+    source_key: str = Field(min_length=1, max_length=200)
+    label: str = Field(min_length=1, max_length=80)
+    context: str | None = Field(default=None, max_length=160)
+    tone: Literal["neutral", "positive", "negative", "warning"] = "neutral"
+    format: Literal["number", "currency", "percent", "compact_number", "compact_currency"] = (
+        "number"
+    )
+
+
 class ReportSection(StrictAnalysisModel):
     title: str = Field(min_length=1, max_length=120)
     status: ReportStatus = "neutral"
@@ -150,7 +168,7 @@ class ReportPlan(StrictAnalysisModel):
     title: str = Field(min_length=1, max_length=160)
     thesis: str = Field(min_length=1, max_length=600)
     heading_status: ReportStatus = "neutral"
-    kpis: list[ReportKpi] = Field(default_factory=list, max_length=6)
+    kpis: list[ReportKpiPlan] = Field(default_factory=list, max_length=6)
     sections: list[ReportSection] = Field(default_factory=list, max_length=6)
     limits: list[str] = Field(default_factory=list, max_length=8)
 

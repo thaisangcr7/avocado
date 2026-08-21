@@ -6,6 +6,8 @@ import json
 
 import pytest
 
+from app.clients.sandbox.base import SandboxResult
+from tests.conftest import quiesce_llm
 from tests.integration.test_documents import upload, wait_for_ready
 
 pytestmark = pytest.mark.anyio
@@ -384,3 +386,109 @@ async def test_a_successful_turn_is_not_marked_failed(client, account):
     )
     assert response.status_code == 201
     assert response.json()["assistant_message"]["failed"] is False
+
+
+async def test_a_workspace_report_is_streamed_and_persisted(
+    client, account, fake_llm, fake_sandbox
+):
+    """An executive-summary ask over several spreadsheets produces a computed,
+    persisted report artifact rather than a single-file analysis."""
+    for name in ("revenue_by_region.csv", "support_backlog.csv"):
+        uploaded = await upload(
+            client,
+            account,
+            name,
+            b"month,region,revenue\n2025-01,North,100\n2025-02,North,120\n",
+            "text/csv",
+        )
+        await wait_for_ready(client, uploaded.json()["document"]["id"], account["headers"])
+    await quiesce_llm(fake_llm)
+
+    profile = {
+        "datasets": [
+            {
+                "name": "revenue_by_region.csv",
+                "kpis": [{"key": "rev|total", "label": "revenue total", "value": 25400000}],
+                "series": [
+                    {
+                        "key": "rev__by_region",
+                        "title": "revenue by region",
+                        "columns": ["region", "revenue"],
+                        "rows": [["North", 7120000], ["South", 7030000]],
+                    }
+                ],
+            }
+        ]
+    }
+    plan = {
+        "title": "Northwind HQ Executive Briefing",
+        "thesis": "Revenue is ahead of plan.",
+        "heading_status": "on_course",
+        "kpis": [
+            {
+                "source_key": "rev|total",
+                "label": "Revenue",
+                "context": "trailing",
+                "tone": "positive",
+                "format": "compact_currency",
+            }
+        ],
+        "sections": [
+            {
+                "title": "Revenue & Growth",
+                "status": "on_course",
+                "narrative": "North leads.",
+                "charts": [
+                    {
+                        "title": "Revenue by region",
+                        "description": None,
+                        "mark": "bar",
+                        "series_key": "rev__by_region",
+                        "x": {"field": "region", "type": "nominal", "title": None, "format": None},
+                        "y": {
+                            "field": "revenue",
+                            "type": "quantitative",
+                            "title": None,
+                            "format": None,
+                        },
+                        "color": None,
+                    }
+                ],
+            }
+        ],
+        "limits": [],
+    }
+    fake_sandbox.results = [
+        SandboxResult(success=True, scalars={"result": profile}, execution_ms=7)
+    ]
+    fake_llm.responses = [json.dumps(plan)]
+
+    conversation_id = await new_conversation(client, account)
+    events: list[tuple[str | None, dict]] = []
+    current = None
+    async with client.stream(
+        "POST",
+        f"/workspaces/{account['workspace_id']}/conversations/{conversation_id}/messages/stream",
+        json={"content": "Give me an executive summary of the whole workspace."},
+        headers=account["headers"],
+    ) as response:
+        async for line in response.aiter_lines():
+            if line.startswith("event: "):
+                current = line[7:]
+            elif line.startswith("data: "):
+                events.append((current, json.loads(line[6:])))
+
+    names = [name for name, _ in events]
+    assert names == ["report_started", "report_completed", "done"]
+    report = next(data for name, data in events if name == "report_completed")["report"]
+    assert report["title"] == "Northwind HQ Executive Briefing"
+    # The KPI value is the computed scalar, formatted — not authored by the model.
+    assert report["kpis"][0]["value"] == "$25.4M"
+    assert report["sections"][0]["charts"][0]["series_key"] == "rev__by_region"
+
+    messages = await client.get(
+        f"/workspaces/{account['workspace_id']}/conversations/{conversation_id}/messages",
+        headers=account["headers"],
+    )
+    assistant = messages.json()[1]
+    assert assistant["report_artifact"]["title"] == "Northwind HQ Executive Briefing"

@@ -30,6 +30,7 @@ from app.core.logging import get_logger
 from app.repositories.documents import DocumentTableRepository
 from app.schemas.analysis import (
     ExecutiveReport,
+    ReportKpi,
     ReportPlan,
     ReportSection,
     ReportSeries,
@@ -53,9 +54,11 @@ series (already calculated from the full data). These numbers are the only truth
 Rules:
 - Never invent a number, dataset, column, or category. Use only values present in the evidence.
 - Lead with a single thesis: the one thing leadership should act on this cycle.
-- Choose 3-6 headline KPIs for the top strip. Copy their values from the evidence exactly; \
-you may format them (%, $, thousands) but never change the figure. Set tone to positive, \
-negative, warning, or neutral to match performance.
+- Choose 3-6 headline KPIs for the top strip. For each, set source_key to the exact key of \
+a computed KPI in the evidence, and choose a format (currency, compact_currency, percent, \
+number, or compact_number). The service fills the figure from that computed value — never \
+write the number yourself. Set tone to positive, negative, warning, or neutral to match \
+performance.
 - Write one section per meaningful theme (revenue, delivery, support, hiring, finance, etc.). \
 Give each a status of on_course, watch, or off_course, and 2-4 sentences of narrative that \
 name specific computed figures.
@@ -167,6 +170,13 @@ class ReportService:
             for series in dataset.get("series", [])
             if isinstance(series, dict) and series.get("key")
         }
+        kpi_values = {
+            kpi["key"]: kpi["value"]
+            for dataset in profile.get("datasets", [])
+            if isinstance(dataset, dict)
+            for kpi in dataset.get("kpis", [])
+            if isinstance(kpi, dict) and kpi.get("key") and kpi.get("value") is not None
+        }
 
         provider, spec = self._router.resolve(
             task=TaskType.SYNTHESIS, preferred_model=preferred_model
@@ -189,6 +199,17 @@ class ReportService:
         )
         plan = ReportPlan.model_validate_json(completion.text)
 
+        kpis = [
+            ReportKpi(
+                label=kpi.label,
+                value=_format_kpi(kpi_values[kpi.source_key], kpi.format),
+                context=kpi.context,
+                tone=kpi.tone,
+            )
+            for kpi in plan.kpis
+            if kpi.source_key in kpi_values
+        ]
+
         sections = [self._validate_section(section, series_by_key) for section in plan.sections]
         referenced = {chart.series_key for section in sections for chart in section.charts}
         series = [
@@ -206,7 +227,7 @@ class ReportService:
             title=plan.title,
             thesis=plan.thesis,
             heading_status=plan.heading_status,
-            kpis=plan.kpis,
+            kpis=kpis,
             sections=sections,
             series=series,
             limits=plan.limits,
@@ -229,6 +250,35 @@ class ReportService:
                 valid.append(chart)
         section.charts = valid
         return section
+
+
+def _format_kpi(value: object, fmt: str) -> str:
+    """Render a computed number for the KPI strip in the model's chosen format."""
+    try:
+        number = float(value)  # type: ignore[arg-type]
+    except (TypeError, ValueError):
+        return str(value)
+
+    if fmt == "percent":
+        return f"{number:.1f}%"
+    if fmt == "currency":
+        return f"${number:,.0f}"
+    if fmt == "compact_currency":
+        return f"${_compact(number)}"
+    if fmt == "compact_number":
+        return _compact(number)
+    return f"{number:,.0f}"
+
+
+def _compact(number: float) -> str:
+    magnitude = abs(number)
+    if magnitude >= 1e9:
+        return f"{number / 1e9:.1f}B"
+    if magnitude >= 1e6:
+        return f"{number / 1e6:.1f}M"
+    if magnitude >= 1e3:
+        return f"{number / 1e3:.1f}K"
+    return f"{number:.0f}"
 
 
 def _variable_name(name: str, used: set[str]) -> str:
