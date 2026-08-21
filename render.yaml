@@ -1,0 +1,65 @@
+# Free-tier deploy: API + static frontend on Render, Postgres on Neon.
+#
+# What this gets you: upload, retrieval with citations, the knowledge map,
+# tasks, and voice. What it does not: the analysis sandbox, which needs a
+# container daemon no managed platform will hand out (see the README section
+# "What a free deploy can and cannot include").
+#
+# Two values are not set here because they are secrets or account-specific, and
+# Render's dashboard is the right place for them:
+#   DATABASE_URL      - the Neon connection string (add ?sslmode=require)
+#   ANTHROPIC_API_KEY - your key
+#   OPENAI_API_KEY    - your key, used for embeddings
+#   S3_*              - any S3-compatible bucket
+#
+# Free instances sleep after 15 minutes idle and take about a minute to wake.
+# SECRET_KEY is generated once by Render and then held stable, which matters:
+# regenerating it on each boot would sign every user out on every cold start.
+
+services:
+  - type: web
+    name: avocado-api
+    runtime: docker
+    plan: free
+    rootDir: backend
+    dockerfilePath: ./Dockerfile
+    healthCheckPath: /api/v1/live
+    envVars:
+      - key: APP_ENV
+        value: production
+      - key: DEBUG
+        value: "false"
+      - key: SECRET_KEY
+        generateValue: true
+      - key: EMBEDDING_PROVIDER
+        value: openai
+      # No container daemon here, so the honest setting is off rather than a
+      # weaker sandbox that still claims isolation.
+      - key: SANDBOX_BACKEND
+        value: disabled
+      # Unset REDIS_URL on purpose: ingestion then runs in-process instead of
+      # needing a second always-on service.
+      - key: STORAGE_BACKEND
+        value: s3
+      - key: PYTHON_VERSION
+        value: "3.12"
+
+  - type: web
+    name: avocado-web
+    runtime: static
+    plan: free
+    rootDir: frontend
+    buildCommand: npm ci && npm run build
+    staticPublishPath: ./dist
+    envVars:
+      # Baked at build time. The container entrypoint's runtime config does not
+      # apply to a static site, so this is the seam that points the SPA at the
+      # API.
+      - key: VITE_API_BASE_URL
+        sync: false
+    routes:
+      # A single-page app serves its own routing; anything not on disk has to
+      # reach index.html rather than 404.
+      - type: rewrite
+        source: /*
+        destination: /index.html

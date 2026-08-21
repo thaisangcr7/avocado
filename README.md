@@ -14,6 +14,47 @@ Full design: [`docs/architecture.md`](docs/architecture.md).
 
 ---
 
+## See it working
+
+Five commands from a clean checkout to a workspace full of documents you can
+interrogate. Requires Docker and an `ANTHROPIC_API_KEY`.
+
+```bash
+cp .env.example .env
+```
+
+Put a generated `SECRET_KEY`, a generated `SANDBOX_AUTH_TOKEN`, and your
+`ANTHROPIC_API_KEY` into `.env` (see [Quick start](#quick-start) for the
+generator commands), then:
+
+```bash
+docker build -t avocado-sandbox:latest ./sandbox && docker compose up -d
+```
+
+```bash
+python3 backend/scripts/generate_demo_data.py --reset
+```
+
+That prints the login it just created. Open **http://localhost:5173**, sign in,
+and pick the **Northwind HQ** workspace.
+
+Three questions worth asking, in this order:
+
+1. **"What policies does this workspace define?"** — a cited answer assembled
+   from several documents at once.
+2. **"If I don't use all my paid days off this year, how many roll into next
+   year?"** — the source says *"unused balance carries over… up to a cap of
+   five days"*. The question shares almost none of those words, so a keyword
+   index misses it and a semantic one does not.
+3. Switch to the **Northwind Sandbox** workspace and ask anything. It is empty
+   on purpose, and the answer says so instead of inventing one.
+
+Then hit **Analyse** on `revenue_by_region.csv` and ask for the month-over-month
+trend: the model writes pandas, it runs in a locked-down container, and you get
+the number *and* the program that produced it.
+
+---
+
 ## Status
 
 | Phase | Scope | State |
@@ -21,11 +62,11 @@ Full design: [`docs/architecture.md`](docs/architecture.md).
 | 0 — Foundation | Clean-architecture skeleton, Docker, config, CI, auth | ✅ Done |
 | 1 — Ingestion + Analysis | Multimodal upload, RAG Q&A, sandboxed analysis engine, UI | ✅ Done |
 | 2 — Voice + multi-model | Deepgram STT, second provider, Auto mode | ✅ Done |
-| 3 — Multi-tenant | Org/team/workspace, RBAC, invites | Schema + isolation done; invite flow done |
+| 3 — Multi-tenant | Org/team/workspace, RBAC, invites | ✅ Done |
 | 4 — Team Mastermind | Projects/tasks, suggestions, task resume, knowledge map | ✅ Done |
-| 5 — Connectors + scale | Google Drive, observability, load test | Not started |
+| 5 — Connectors + scale | Google Drive, observability, cost routing, load test | Observability, cost routing and a folder connector done; Drive and load test not started |
 
-**345 backend tests, 96 frontend tests.** Backend coverage 87%.
+**412 backend tests, 98 frontend tests**, all green in CI on every push.
 
 ---
 
@@ -79,25 +120,49 @@ offering a button that fails when pressed.
 
 ### Generate demo data
 
-Use the seed script to create a realistic workspace, extra collaborators,
-multiple projects and tasks, and a large document set for testing:
+A seeded dataset exists so the app can be evaluated without hunting for
+documents to upload. It is created through the public API, exactly as a user
+would, rather than written into the database behind the app's back.
+
+`--reset` truncates every table in the local Postgres first, so the seed is
+reproducible rather than additive. **It deletes any account you created by
+hand**, so leave it off if you have local work you want to keep:
 
 ```bash
-python backend/scripts/generate_demo_data.py --base-url http://localhost:8000
+python3 backend/scripts/generate_demo_data.py          # add to what is there
+python3 backend/scripts/generate_demo_data.py --reset  # wipe first
 ```
 
-It writes the source files and a manifest under `backend/.demo-data/`. One
-workspace is intentionally left empty so you can see the honest no-results
-response before you upload anything there.
+**Where it lands.** The generated files and a manifest are written to
+`backend/.demo-data/latest/` — gitignored, because it is output, not source:
 
-To reset the local demo database before reseeding, run:
+```
+backend/.demo-data/latest/
+├── manifest.json              ← workspace ids, and the login it created
+├── northwind-hq/documents/    ← policies, meeting notes, 5 spreadsheets
+└── northwind-finance/documents/
+```
+
+The **credentials are in `manifest.json`** under `owner.email` and
+`owner.password`, regenerated on every seed:
 
 ```bash
-python backend/scripts/generate_demo_data.py --reset --base-url http://localhost:8000
+python3 -c "import json;m=json.load(open('backend/.demo-data/latest/manifest.json'));print(m['owner']['email'])"
 ```
 
-That truncates the local Postgres tables in the compose stack, so use it only
-against your local demo environment.
+**What it creates.** One organization, one team, two collaborators, projects
+and tasks, and three workspaces:
+
+| Workspace | Contents | What it demonstrates |
+|---|---|---|
+| Northwind HQ | Policies, meeting notes, 5 spreadsheets | Cited retrieval and sandboxed analysis |
+| Northwind Finance | Budget and forecast data | A second tenant with its own documents |
+| Northwind Sandbox | Nothing, deliberately | The honest "not in these sources" answer |
+
+Most documents are templated filler — enough to exercise ingestion, not enough
+to show retrieval understanding meaning. `time-off-policy.md` and
+`expense-policy.md` are real prose with specific figures, and exist so a
+paraphrased question has something genuine to match against.
 
 ### Sync a local folder (connector-style MVP)
 
@@ -124,6 +189,32 @@ Useful flags:
 - `--password-env`: use a different environment variable for password (default `AVOCADO_PASSWORD`).
 
 The script stores sync state in `<folder>/.avocado-sync-state.json` by default.
+
+### What a free deploy can and cannot include
+
+Two components decide the cost, and it is worth being explicit about them
+rather than discovering it halfway through a signup.
+
+**The analysis sandbox needs a Docker socket.** Generated code runs in a
+container started by the runner service, which means the runner must be able to
+talk to a container daemon. Managed platforms do not hand that out — it is
+effectively root on their host — and this project's own config refuses to start
+with `SANDBOX_BACKEND=docker` outside development for exactly that reason. So:
+
+- **On a VM you control** (including a free-tier one), everything works.
+- **On a managed platform**, set `SANDBOX_BACKEND=disabled`. Upload, retrieval,
+  citations, voice and the knowledge map all work; `/analyze` returns 503
+  rather than running code with less isolation than it promises.
+
+**Object storage is required outside development.** `STORAGE_BACKEND=local`
+is rejected in staging and production, because a container filesystem is
+ephemeral — uploads vanish on the next restart, which on a free tier happens
+every time the instance sleeps. Any S3-compatible bucket works via
+`S3_ENDPOINT_URL`.
+
+**Redis is optional.** Without `REDIS_URL`, ingestion runs in-process in the
+API instead of on a worker, so a single free instance is enough. It is the
+right trade for a demo and the wrong one for load.
 
 ### Deployment checklist
 
