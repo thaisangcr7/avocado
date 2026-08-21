@@ -15,6 +15,7 @@ import { ApiError } from '@/api/client'
 import { streamMessage, type StreamSource } from '@/api/stream'
 import type { AnalysisRun, Citation, Message } from '@/api/types'
 import { Button, EmptyState, ErrorNotice, Spinner } from '@/components/ui/primitives'
+import { ReportArtifact } from '@/features/analysis/ReportArtifact'
 import {
   queryKeys,
   useDocuments,
@@ -59,6 +60,7 @@ export function ChatView({
   const [streamingText, setStreamingText] = useState('')
   const [streamingSources, setStreamingSources] = useState<StreamSource[]>([])
   const [analysisDocumentName, setAnalysisDocumentName] = useState<string | null>(null)
+  const [reportRunning, setReportRunning] = useState(false)
   const [isStreaming, setIsStreaming] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [uploadError, setUploadError] = useState<string | null>(null)
@@ -86,6 +88,7 @@ export function ChatView({
     setStreamingText('')
     setStreamingSources([])
     setAnalysisDocumentName(null)
+    setReportRunning(false)
     setIsStreaming(true)
 
     // Show the user's message immediately rather than waiting for the round
@@ -126,11 +129,19 @@ export function ChatView({
         onAnalysisCompleted: ({ document_id, run }) => {
           onOpenAnalysis?.(document_id, run)
         },
+        onReportStarted: () => {
+          setReportRunning(true)
+        },
+        onReportCompleted: () => {
+          // The report is persisted on the assistant message; the refetch on
+          // `done` renders it in place. Nothing to hold in transient state.
+        },
         onDone: () => {
           setIsStreaming(false)
           setStreamingText('')
           setStreamingSources([])
           setAnalysisDocumentName(null)
+          setReportRunning(false)
           // Refetch so the optimistic user message is replaced by the real
           // persisted pair, with ids and usage figures.
           void queryClient.invalidateQueries({
@@ -145,6 +156,7 @@ export function ChatView({
           setIsStreaming(false)
           setStreamingText('')
           setAnalysisDocumentName(null)
+          setReportRunning(false)
         },
       },
       controller.signal,
@@ -229,6 +241,7 @@ export function ChatView({
                 text={streamingText}
                 sources={streamingSources}
                 analysisDocumentName={analysisDocumentName}
+                reportRunning={reportRunning}
               />
             )}
           </div>
@@ -645,6 +658,10 @@ function MessageBubble({ message }: { message: Message }) {
           )}
         </div>
 
+        {!isUser && !message.failed && message.report_artifact && (
+          <ReportArtifact report={message.report_artifact} />
+        )}
+
         {!isUser && !message.failed && (
           <div className="mt-4 space-y-3">
             {message.citations.length > 0 && (
@@ -727,10 +744,12 @@ function StreamingBubble({
   text,
   sources,
   analysisDocumentName,
+  reportRunning,
 }: {
   text: string
   sources: StreamSource[]
   analysisDocumentName: string | null
+  reportRunning: boolean
 }) {
   return (
     <div className="animate-in flex gap-3">
@@ -760,9 +779,11 @@ function StreamingBubble({
             <div className="flex items-center gap-2 text-ink-muted">
               <Spinner className="size-3.5" />
               <span className="text-xs">
-                {analysisDocumentName
-                  ? `Analyzing every row in ${analysisDocumentName}…`
-                  : 'Thinking…'}
+                {reportRunning
+                  ? 'Computing KPIs across every dataset and composing the report…'
+                  : analysisDocumentName
+                    ? `Analyzing every row in ${analysisDocumentName}…`
+                    : 'Thinking…'}
               </span>
             </div>
           )}

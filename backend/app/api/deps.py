@@ -62,6 +62,7 @@ from app.services.membership_service import MembershipService
 from app.services.model_service import ModelService
 from app.services.project_service import ProjectService
 from app.services.rag_service import RAGService
+from app.services.report_service import ReportService
 from app.services.suggestion_service import SuggestionService
 from app.services.task_resume_service import TaskResumeService
 from app.services.team_service import TeamService
@@ -455,6 +456,14 @@ def get_chat_service(
         analysis=AnalysisService(
             runs=runs,
             documents=documents,
+            tables=tables,
+            storage=storage,
+            sandbox=request.app.state.sandbox,
+            limits=request.app.state.sandbox_limits,
+            router=router,
+            usage=usage,
+        ),
+        report=ReportService(
             tables=tables,
             storage=storage,
             sandbox=request.app.state.sandbox,

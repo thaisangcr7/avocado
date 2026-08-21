@@ -131,6 +131,8 @@ export interface Message {
   citations: Citation[]
   /** True when this records a failed generation rather than an answer. */
   failed: boolean
+  /** A whole-workspace executive report, when this message is one. */
+  report_artifact?: ExecutiveReport | null
   model_used: string | null
   input_tokens: number | null
   output_tokens: number | null
@@ -211,9 +213,52 @@ export interface AnalysisRun {
   created_at: string
 }
 
+export type ReportStatus = 'on_course' | 'watch' | 'off_course' | 'neutral'
+
+export interface ReportKpi {
+  label: string
+  value: string
+  context: string | null
+  tone: 'neutral' | 'positive' | 'negative' | 'warning'
+}
+
+export interface ReportSeries {
+  key: string
+  title: string
+  columns: string[]
+  rows: unknown[][]
+}
+
+export interface ReportChart {
+  title: string
+  description: string | null
+  mark: 'bar' | 'line' | 'area' | 'point' | 'arc' | 'boxplot'
+  series_key: string
+  x: VisualizationEncoding
+  y: VisualizationEncoding
+  color: VisualizationEncoding | null
+}
+
+export interface ReportSection {
+  title: string
+  status: ReportStatus
+  narrative: string
+  charts: ReportChart[]
+}
+
+export interface ExecutiveReport {
+  title: string
+  thesis: string
+  heading_status: ReportStatus
+  kpis: ReportKpi[]
+  sections: ReportSection[]
+  series: ReportSeries[]
+  limits: string[]
+  model_used: string | null
+}
+
 export type Role = 'org_admin' | 'team_admin' | 'member' | 'viewer'
 export type InvitationStatus = 'pending' | 'accepted' | 'revoked' | 'expired'
-
 /** Ordered weakest to strongest, mirroring the backend's rank. */
 export const ROLE_RANK: Record<Role, number> = {
   viewer: 0,

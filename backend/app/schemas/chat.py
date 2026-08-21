@@ -59,6 +59,8 @@ class MessageResponse(ApiModel):
     role: MessageRole
     content: str
     citations: list[dict] = []
+    # A whole-workspace executive report artifact, when this message is one.
+    report_artifact: dict | None = None
     # True when this records a failed generation rather than an answer.
     failed: bool = False
     model_used: str | None

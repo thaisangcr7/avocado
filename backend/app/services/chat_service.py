@@ -24,6 +24,7 @@ from app.schemas.chat import (
 )
 from app.services.analysis_service import AnalysisService
 from app.services.rag_service import SYSTEM_PROMPT, RAGService
+from app.services.report_service import ReportService
 from app.services.usage_service import UsageService
 
 log = get_logger(__name__)
@@ -46,6 +47,22 @@ ANALYSIS_INTENT = re.compile(
     r")\b",
     re.IGNORECASE,
 )
+# A whole-workspace executive report, distinct from a single-chart analysis.
+# Strong phrasing ("executive summary", "KPI report") asks for a synthesis and
+# routes to a report whenever there is any data. Weak phrasing ("dashboard")
+# only becomes a report when there are several datasets to synthesise across —
+# a lone spreadsheet is better served by single-file analysis.
+STRONG_REPORT_INTENT = re.compile(
+    r"\b("
+    r"executive\s+summary|exec\s+summary|executive\s+report|executive\s+briefing|"
+    r"kpi\s*report|board\s+report|business\s+review|company\s+overview"
+    r")\b",
+    re.IGNORECASE,
+)
+WEAK_REPORT_INTENT = re.compile(
+    r"\b(dashboard|briefing|overview)\b",
+    re.IGNORECASE,
+)
 ANALYZABLE_TYPES = {DocumentType.CSV, DocumentType.XLSX}
 
 
@@ -58,6 +75,7 @@ class ChatService:
         documents: DocumentRepository,
         rag: RAGService,
         analysis: AnalysisService,
+        report: ReportService,
         router: ModelRouter,
         usage: UsageService,
     ) -> None:
@@ -66,6 +84,7 @@ class ChatService:
         self._documents = documents
         self._rag = rag
         self._analysis = analysis
+        self._report = report
         self._router = router
         self._usage = usage
 
@@ -244,6 +263,43 @@ class ChatService:
         )
         await self._messages.commit()
 
+        if await self._wants_report(workspace_id, payload):
+            yield {"event": "report_started", "data": {}}
+            try:
+                report = await self._report.generate(
+                    workspace_id=workspace_id,
+                    org_id=org_id,
+                    user_id=user_id,
+                    focus=payload.content,
+                    preferred_model=preferred_model,
+                )
+            except AvocadoError as exc:
+                await self._record_failure(conversation_id, workspace_id, exc.detail)
+                yield {"event": "error", "data": {"detail": exc.detail}}
+                return
+
+            artifact = report.model_dump(mode="json")
+            await self._finish_stream(
+                conversation_id,
+                workspace_id,
+                org_id,
+                user_id,
+                report.thesis,
+                [],
+                report.model_used,
+                0,
+                0,
+                0,
+                record_usage=False,
+                report_artifact=artifact,
+            )
+            yield {"event": "report_completed", "data": {"report": artifact}}
+            yield {
+                "event": "done",
+                "data": {"model": report.model_used or "", "citations": []},
+            }
+            return
+
         analysis_document = await self._analysis_document(
             workspace_id=workspace_id,
             question=payload.content,
@@ -401,6 +457,7 @@ class ChatService:
         latency_ms: int,
         *,
         record_usage: bool = True,
+        report_artifact: dict | None = None,
     ) -> None:
         await self._messages.add(
             Message(
@@ -409,6 +466,7 @@ class ChatService:
                 role=MessageRole.ASSISTANT,
                 content=answer,
                 citations=[c.model_dump(mode="json") for c in citations],
+                report_artifact=report_artifact,
                 model_used=model_used,
                 input_tokens=in_tokens,
                 output_tokens=out_tokens,
@@ -427,6 +485,26 @@ class ChatService:
                 output_tokens=out_tokens,
                 latency_ms=latency_ms,
             )
+
+    async def _wants_report(self, workspace_id: uuid.UUID, payload: MessageCreate) -> bool:
+        """Whether this turn should produce a whole-workspace executive report.
+
+        A report reads across the whole workspace, so a turn scoped to a single
+        document is left to single-file analysis instead. Strong report phrasing
+        routes to a report whenever any spreadsheet exists; weak phrasing like
+        "dashboard" only does so when there are several datasets to synthesise.
+        """
+        if len(payload.document_ids) == 1:
+            return False
+        strong = bool(STRONG_REPORT_INTENT.search(payload.content))
+        weak = bool(WEAK_REPORT_INTENT.search(payload.content))
+        if not (strong or weak):
+            return False
+        ready = await self._documents.list_ready(workspace_id)
+        analyzable = sum(1 for doc in ready if doc.doc_type in ANALYZABLE_TYPES)
+        if analyzable == 0:
+            return False
+        return strong or analyzable >= 2
 
     async def _analysis_document(
         self,

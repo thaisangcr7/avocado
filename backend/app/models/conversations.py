@@ -61,6 +61,10 @@ class Message(Base, UUIDPrimaryKeyMixin, TimestampMixin):
     # grounding for an assistant answer, rendered as clickable sources.
     citations: Mapped[list[dict[str, Any]]] = mapped_column(JSONB, nullable=False, default=list)
 
+    # A whole-workspace executive report, when this message is one. Stored on
+    # the message so it re-renders on reload without recomputing the analysis.
+    report_artifact: Mapped[dict[str, Any] | None] = mapped_column(JSONB, nullable=True)
+
     # True when generation failed and this message records that rather than an
     # answer. The user's turn genuinely happened, so the question stays in the
     # thread; without this the thread shows a question with no reply and no
