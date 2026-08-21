@@ -26,6 +26,48 @@ Full design: [`docs/architecture.md`](docs/architecture.md).
 
 ---
 
+## How it works — and why not just a Claude or ChatGPT chat
+
+Avocado is **powered by Claude**, not a competitor to it. The model is the
+engine; Avocado is the governed workspace built around it. A raw chat window
+cannot be all four of these at once:
+
+1. **Grounded, not guessed.** Ask an analytical question and Avocado writes
+   pandas, runs it in a locked-down sandbox over the *entire* dataset, and
+   returns computed numbers plus the program that produced them. A chat eyeballs
+   whatever fits in its context; every figure Avocado reports traces to a real
+   computation.
+2. **A team's shared memory, not a stateless session.** Ingest documents and
+   spreadsheets once; the whole team queries them and answers cite their
+   sources. A chat forgets your files between sessions and serves one person.
+3. **Your data, isolated and governed.** Every query is scoped to a workspace
+   with row-level tenant isolation; generated code runs with no network and hard
+   resource caps; that code is inspectable. This is what lets a team point an
+   LLM at internal data without hand-wringing.
+4. **A product, not a prompt.** Auth, workspaces, streaming answers, persisted
+   dashboard artifacts, voice, and connectors — something a team adopts, not a
+   transcript you copy-paste and reformat.
+
+**Where the honest line is:** for one person pasting a single CSV, a Claude or
+ChatGPT chat is often enough. Avocado is for a *team* that wants a governed,
+multi-tenant workspace over *its own* data — grounded answers everyone shares,
+auditable analysis, and a memory that outlives the session.
+
+### The three ways to ask
+
+- **Cited retrieval** — "What's our remote-work policy?" → an answer assembled
+  from the actual documents, with the sources shown.
+- **Single-file analysis** — "What's the month-over-month revenue trend?" →
+  generated pandas runs in the sandbox; you get the number *and* the code.
+- **Whole-workspace executive report** — "Give me an executive summary" →
+  Avocado computes KPIs, trends and breakdowns across *every* spreadsheet in the
+  workspace and renders a multi-section dashboard: a KPI strip, per-theme
+  narrative with a status (on course / watch / off course), charts, and an
+  honest limits note. Every headline number comes from a computation, not the
+  model's phrasing.
+
+---
+
 ## See it working
 
 Five commands from a clean checkout to a workspace full of documents you can
@@ -65,6 +107,12 @@ Then hit **Analyse** on `revenue_by_region.csv` and ask for the month-over-month
 trend: the model writes pandas, it runs in a locked-down container, and you get
 the number *and* the program that produced it.
 
+Finally, in the **Northwind HQ** chat, ask **"Give me an executive summary of the
+whole workspace"** (or "KPI report", or "dashboard"). Avocado profiles every
+spreadsheet in the sandbox and renders a computed, multi-section briefing — a
+KPI strip, per-theme sections with status badges and charts, and a limits note.
+Reload the page and it is still there: the report is saved on the message.
+
 ---
 
 ## Status
@@ -97,6 +145,9 @@ using local/demo data flows already in the project.
   - Suggested starter questions immediately after ingest.
 3. **Report and dashboard actions**
   - One-click prompts for executive summary, KPI report, and trend dashboard narrative.
+  - **Shipped:** a whole-workspace executive report — KPIs, trends and breakdowns
+    computed across every spreadsheet, rendered as a persisted multi-section
+    dashboard with grounded (computed, not model-authored) headline numbers.
 4. **Performance polish**
   - Reduce initial bundle cost and speed up perceived first interaction.
 

@@ -16,6 +16,7 @@ The enterprise-team framing is the right validation story: a large team drowning
 **Definition of done (v1):**
 - Upload anything — PDF, Word, Excel/CSV, images, plain text — into one workspace
 - Ask a real analytical question of a spreadsheet and get a computed answer, not just a retrieved snippet
+- Ask for a whole-workspace executive report and get a computed, multi-section dashboard — KPIs, trends and breakdowns across *every* spreadsheet, with headline numbers that come from real computation, not the model's phrasing
 - Ask a question about "the team" (policies/processes/projects) and get a grounded, cited answer
 - Deployed and publicly demo-able 24/7, independent of your laptop
 - A working onboarding-style demo: point a fictional new hire at a workspace and have them productively query "what does this team do and what's active right now"
