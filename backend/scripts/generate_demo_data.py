@@ -452,93 +452,162 @@ def build_revenue_csv(rng: random.Random, rows: int) -> bytes:
 
 
 def build_support_csv(rng: random.Random, rows: int) -> bytes:
+    """26 weeks of a support backlog that grows every single week.
+
+    Intake climbs faster than resolution, so the net backlog compounds. Severity
+    handling is inverted -- high-severity tickets close fastest while low-severity
+    ones quietly pile up -- which is the clearest "off course" story in the demo.
+    """
     queues = ["billing", "product", "ops", "onboarding"]
     severities = ["low", "medium", "high"]
+    close_rate = {"high": 0.86, "medium": 0.74, "low": 0.63}
+    queue_load = {"billing": 1.0, "product": 1.18, "ops": 0.92, "onboarding": 1.08}
+    base_opened = {"low": 22, "medium": 16, "high": 9}
+    base_age = {"low": 14, "medium": 8, "high": 3}
     data = []
-    for index in range(rows):
-        data.append(
-            {
-                "week": f"2025-W{(index % 26) + 1:02d}",
-                "queue": queues[index % len(queues)],
-                "severity": severities[index % len(severities)],
-                "opened": 40 + (index % 11) * 3 + rng.randint(0, 14),
-                "closed": 28 + (index % 9) * 3 + rng.randint(0, 12),
-                "age_days": rng.randint(0, 21),
-            }
-        )
-    return write_csv(data, ["week", "queue", "severity", "opened", "closed", "age_days"])
+    for week in range(1, 27):
+        demand = 1 + 0.018 * (week - 1)
+        for queue in queues:
+            for severity in severities:
+                opened = round(
+                    base_opened[severity] * queue_load[queue] * demand * rng.uniform(0.92, 1.1)
+                )
+                closed = min(opened, round(opened * close_rate[severity] * rng.uniform(0.94, 1.04)))
+                data.append(
+                    {
+                        "week": f"2025-W{week:02d}",
+                        "queue": queue,
+                        "severity": severity,
+                        "opened": opened,
+                        "closed": closed,
+                        "age_days": base_age[severity] + week // 6 + rng.randint(0, 4),
+                    }
+                )
+    return write_csv(data[:rows], ["week", "queue", "severity", "opened", "closed", "age_days"])
 
 
 def build_budget_csv(rng: random.Random, rows: int) -> bytes:
+    """12 months of departmental budget versus actual spend.
+
+    Software runs consistently over budget while travel underspends, giving each
+    category a distinct variance story rather than uniform noise.
+    """
     categories = ["travel", "software", "contractors", "events"]
+    base = {"travel": 18000, "software": 24000, "contractors": 32000, "events": 12000}
+    spend_bias = {"travel": 0.86, "software": 1.09, "contractors": 1.0, "events": 0.97}
+    seasonal = [0.9, 0.92, 1.0, 1.0, 1.02, 1.05, 0.95, 0.96, 1.03, 1.06, 1.08, 1.14]
     data = []
-    for index in range(rows):
-        budget = 15000 + (index % 9) * 1800 + rng.randint(-500, 900)
-        spent = max(5000, budget - rng.randint(-1500, 3200))
-        data.append(
-            {
-                "month": f"2025-{(index % 12) + 1:02d}",
-                "category": categories[index % len(categories)],
-                "budget": budget,
-                "spent": spent,
-                "variance": spent - budget,
-            }
-        )
-    return write_csv(data, ["month", "category", "budget", "spent", "variance"])
+    for month in range(1, 13):
+        for category in categories:
+            budget = round(base[category] * seasonal[month - 1] * rng.uniform(0.98, 1.03))
+            spent = round(budget * spend_bias[category] * rng.uniform(0.97, 1.05))
+            data.append(
+                {
+                    "month": f"2025-{month:02d}",
+                    "category": category,
+                    "budget": budget,
+                    "spent": spent,
+                    "variance": spent - budget,
+                }
+            )
+    return write_csv(data[:rows], ["month", "category", "budget", "spent", "variance"])
 
 
 def build_forecast_csv(rng: random.Random, rows: int) -> bytes:
-    scenarios = ["base", "upside", "downside"]
+    """A 24-month forecast with one row per month and scenario.
+
+    Unique month+scenario keys (no duplicate vintages), a gentle growth trend and
+    December seasonality, and scenarios that genuinely separate -- downside below,
+    upside above base. Margin holds near 46%.
+    """
+    scenarios = {"downside": 0.90, "base": 1.0, "upside": 1.13}
+    seasonal = [0.94, 0.95, 1.0, 1.01, 1.02, 1.05, 0.97, 0.99, 1.03, 1.06, 1.10, 1.18]
+    months = [f"{year}-{month:02d}" for year in (2024, 2025) for month in range(1, 13)]
     data = []
-    for index in range(rows):
-        revenue = 50000 + (index % 14) * 2200 + rng.randint(-1200, 2500)
-        expense = 28000 + (index % 10) * 1400 + rng.randint(-1000, 1800)
-        data.append(
-            {
-                "month": f"2025-{(index % 12) + 1:02d}",
-                "scenario": scenarios[index % len(scenarios)],
-                "revenue": revenue,
-                "expense": expense,
-                "margin": revenue - expense,
-            }
-        )
-    return write_csv(data, ["month", "scenario", "revenue", "expense", "margin"])
+    for month_index, month in enumerate(months):
+        month_number = int(month[-2:])
+        base_revenue = 60000 * (1 + 0.006 * month_index) * seasonal[month_number - 1]
+        for scenario, factor in scenarios.items():
+            revenue = round(base_revenue * factor * rng.uniform(0.99, 1.01))
+            expense = round(revenue * 0.54 * rng.uniform(0.99, 1.01))
+            data.append(
+                {
+                    "month": month,
+                    "scenario": scenario,
+                    "revenue": revenue,
+                    "expense": expense,
+                    "margin": revenue - expense,
+                }
+            )
+    return write_csv(data[:rows], ["month", "scenario", "revenue", "expense", "margin"])
 
 
 def build_pipeline_csv(rng: random.Random, rows: int) -> bytes:
+    """A hiring funnel across 26 weeks that narrows stage by stage.
+
+    Candidates thin from screen to offer and the overall hire rate lands near
+    15%. Analyst roles convert best, designer worst, and dropoff is a
+    process-wide ~32% rather than any one team's problem.
+    """
     roles = ["engineer", "designer", "analyst", "ops"]
     stages = ["screen", "interview", "exercise", "offer"]
+    retention = {"screen": 1.0, "interview": 0.62, "exercise": 0.40, "offer": 0.26}
+    dropoff = {"screen": 0.38, "interview": 0.35, "exercise": 0.34, "offer": 0.31}
+    role_hire = {"engineer": 0.157, "designer": 0.149, "analyst": 0.160, "ops": 0.153}
+    role_volume = {"engineer": 1.3, "designer": 0.8, "analyst": 1.0, "ops": 0.9}
     data = []
-    for index in range(rows):
-        data.append(
-            {
-                "week": f"2025-W{(index % 24) + 1:02d}",
-                "role": roles[index % len(roles)],
-                "stage": stages[index % len(stages)],
-                "candidates": 6 + (index % 5) + rng.randint(0, 4),
-                "hired": rng.randint(0, 3),
-                "dropoff_rate": round(rng.uniform(0.1, 0.55), 3),
-            }
-        )
-    return write_csv(data, ["week", "role", "stage", "candidates", "hired", "dropoff_rate"])
+    for week in range(1, 27):
+        for role in roles:
+            entering = 30 * role_volume[role] * rng.uniform(0.9, 1.1)
+            for stage in stages:
+                candidates = max(1, round(entering * retention[stage]))
+                hired = round(candidates * role_hire[role]) if stage == "offer" else 0
+                data.append(
+                    {
+                        "week": f"2025-W{week:02d}",
+                        "role": role,
+                        "stage": stage,
+                        "candidates": candidates,
+                        "hired": hired,
+                        "dropoff_rate": round(dropoff[stage] * rng.uniform(0.95, 1.05), 3),
+                    }
+                )
+    return write_csv(data[:rows], ["week", "role", "stage", "candidates", "hired", "dropoff_rate"])
 
 
 def build_capacity_csv(rng: random.Random, rows: int) -> bytes:
+    """12 sprints of delivery capacity, utilisation trending up slightly.
+
+    Every team delivers under plan; Platform trails at ~87.5% with the highest
+    blocked hours, while Ops and Growth are the most reliable executors. Planning
+    accuracy improves modestly across the cycle.
+    """
     teams = ["platform", "ops", "finance", "growth"]
+    utilization = {"platform": 0.875, "ops": 0.898, "finance": 0.888, "growth": 0.896}
+    blocked_share = {"platform": 0.042, "ops": 0.030, "finance": 0.036, "growth": 0.028}
+    planned_base = {"platform": 162, "ops": 121, "finance": 129, "growth": 138}
     data = []
-    for index in range(rows):
-        planned = 120 + (index % 8) * 8 + rng.randint(-10, 18)
-        delivered = max(40, planned - rng.randint(5, 28))
-        data.append(
-            {
-                "sprint": f"2025-S{(index % 12) + 1:02d}",
-                "team": teams[index % len(teams)],
-                "planned_hours": planned,
-                "delivered_hours": delivered,
-                "blocked_hours": rng.randint(0, 12),
-            }
-        )
-    return write_csv(data, ["sprint", "team", "planned_hours", "delivered_hours", "blocked_hours"])
+    for sprint in range(1, 13):
+        trend = 1 + 0.004 * (sprint - 1)
+        for team in teams:
+            planned = round(planned_base[team] * rng.uniform(0.96, 1.05))
+            delivered = min(
+                planned,
+                round(planned * min(0.97, utilization[team] * trend) * rng.uniform(0.99, 1.01)),
+            )
+            blocked = round(planned * blocked_share[team] * rng.uniform(0.8, 1.2))
+            data.append(
+                {
+                    "sprint": f"2025-S{sprint:02d}",
+                    "team": team,
+                    "planned_hours": planned,
+                    "delivered_hours": delivered,
+                    "blocked_hours": blocked,
+                }
+            )
+    return write_csv(
+        data[:rows], ["sprint", "team", "planned_hours", "delivered_hours", "blocked_hours"]
+    )
 
 
 @dataclass(slots=True)
