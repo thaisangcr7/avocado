@@ -128,9 +128,7 @@ async def test_analysis_persists_only_valid_dashboard_encodings(
     presentation = run["result_data"]["presentation"]
     assert presentation["summary"] == "North leads South by 50."
     assert presentation["metrics"][0]["label"] == "Top region"
-    assert [chart["title"] for chart in presentation["visualizations"]] == [
-        "Revenue by region"
-    ]
+    assert [chart["title"] for chart in presentation["visualizations"]] == ["Revenue by region"]
     presentation_call = next(
         call
         for call in fake_llm.calls

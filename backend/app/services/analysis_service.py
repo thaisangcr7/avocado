@@ -345,9 +345,7 @@ class AnalysisService:
                 model=spec.id,
                 system=PRESENTATION_PROMPT,
                 max_tokens=1200,
-                json_schema=self._strict_json_schema(
-                    AnalysisPresentation.model_json_schema()
-                ),
+                json_schema=self._strict_json_schema(AnalysisPresentation.model_json_schema()),
             )
             candidate = AnalysisPresentation.model_validate_json(completion.text)
             validated = self._validate_presentation(candidate, result.tables)
@@ -420,9 +418,7 @@ class AnalysisService:
                 continue
 
             numeric_indexes = [
-                index
-                for index in range(len(columns))
-                if self._mostly_numeric(rows, index)
+                index for index in range(len(columns)) if self._mostly_numeric(rows, index)
             ]
             if not numeric_indexes:
                 continue

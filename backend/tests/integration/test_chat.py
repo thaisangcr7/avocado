@@ -273,9 +273,7 @@ async def test_analytical_chat_question_runs_full_spreadsheet_analysis(client, a
         b"month,region,revenue\n2025-01,North,100\n2025-01,South,80\n",
         "text/csv",
     )
-    document = await wait_for_ready(
-        client, uploaded.json()["document"]["id"], account["headers"]
-    )
+    document = await wait_for_ready(client, uploaded.json()["document"]["id"], account["headers"])
     conversation_id = await new_conversation(client, account)
 
     events: list[tuple[str | None, dict]] = []

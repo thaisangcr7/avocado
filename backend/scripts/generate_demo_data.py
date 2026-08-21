@@ -342,11 +342,7 @@ def build_revenue_csv(rng: random.Random, rows: int) -> bytes:
     segments = ["SMB", "Mid-market", "Enterprise"]
     products = ["Core", "Analytics", "Automation"]
     channels = ["Direct", "Partner", "Self-serve"]
-    months = [
-        f"{year}-{month:02d}"
-        for year in (2024, 2025)
-        for month in range(1, 13)
-    ]
+    months = [f"{year}-{month:02d}" for year in (2024, 2025) for month in range(1, 13)]
     region_base = {"North": 1.16, "South": 0.82, "East": 0.98, "West": 1.02}
     segment_factor = {"SMB": 0.72, "Mid-market": 1.0, "Enterprise": 1.48}
     product_factor = {"Core": 1.0, "Analytics": 1.18, "Automation": 1.34}
