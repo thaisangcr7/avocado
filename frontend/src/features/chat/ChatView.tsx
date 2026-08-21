@@ -30,6 +30,7 @@ import { useWorkspaceStore } from '@/stores/workspace'
 export function ChatView({
   workspaceId,
   conversationId,
+  onUseDemoWorkspace,
   onOpenTask,
   onOpenAnalysis,
   onStartConversation,
@@ -38,6 +39,7 @@ export function ChatView({
 }: {
   workspaceId: string
   conversationId: string | null
+  onUseDemoWorkspace?: () => void
   onOpenTask?: (taskId: string) => void
   onOpenAnalysis?: (documentId: string, run: AnalysisRun) => void
   /** Opens a new conversation, optionally seeded with a first question. */
@@ -200,7 +202,12 @@ export function ChatView({
     <div className="flex h-full flex-col">
       <div className="min-h-0 flex-1 overflow-y-auto px-4 py-6 sm:px-6">
         {!conversationId ? (
-          <StartHere workspaceId={workspaceId} onStart={onStartConversation} />
+          <StartHere
+            workspaceId={workspaceId}
+            onStart={onStartConversation}
+            onUseDemoWorkspace={onUseDemoWorkspace}
+            onOpenUpload={() => fileInputRef.current?.click()}
+          />
         ) : isLoading ? (
           <div className="flex justify-center py-10">
             <Spinner className="size-5 text-ink-muted" />
@@ -335,20 +342,66 @@ export function ChatView({
 function StartHere({
   workspaceId,
   onStart,
+  onUseDemoWorkspace,
+  onOpenUpload,
 }: {
   workspaceId: string
   onStart?: (question?: string) => void
+  onUseDemoWorkspace?: () => void
+  onOpenUpload?: () => void
 }) {
   const { data: documents } = useDocuments(workspaceId)
   const ready = documents?.items.filter((doc) => doc.status === 'ready') ?? []
 
   if (!ready.length) {
     return (
-      <EmptyState
-        icon={<span className="text-2xl">📂</span>}
-        title="Nothing to ask about yet"
-        description="Upload a document or a spreadsheet, and questions about it get answered here with citations."
-      />
+      <div className="flex h-full items-center justify-center px-4 py-10 sm:px-6">
+        <div className="animate-in-slow w-full max-w-2xl space-y-6">
+          <div className="space-y-2 text-center">
+            <div
+              className="mx-auto flex size-14 items-center justify-center rounded-2xl bg-accent-soft text-2xl shadow-[0_6px_20px_rgba(40,90,50,0.1)]"
+              aria-hidden="true"
+            >
+              ✨
+            </div>
+            <h2 className="font-display text-2xl font-semibold tracking-tight text-ink text-balance">
+              Nothing to ask about yet
+            </h2>
+            <p className="text-sm leading-relaxed text-ink-muted text-balance">
+              Grounded answers come from files in this workspace. Start with demo data or
+              upload your own documents to generate cited answers and computed analysis.
+            </p>
+          </div>
+
+          <div className="grid gap-3 sm:grid-cols-2">
+            <button
+              type="button"
+              onClick={onUseDemoWorkspace}
+              className="group rounded-2xl border border-border-subtle/80 bg-surface-raised/90 p-4 text-left shadow-[0_1px_2px_rgba(30,50,30,0.04)] transition-all hover:-translate-y-0.5 hover:border-accent/35 hover:shadow-[0_8px_20px_rgba(40,90,50,0.08)]"
+            >
+              <p className="text-xs font-semibold uppercase tracking-wide text-accent-strong">
+                Start with demo workspace
+              </p>
+              <p className="mt-1.5 text-sm leading-snug text-ink">
+                Open pre-seeded files and run a guided question flow in seconds.
+              </p>
+            </button>
+
+            <button
+              type="button"
+              onClick={onOpenUpload}
+              className="group rounded-2xl border border-border-subtle/80 bg-surface-raised/90 p-4 text-left shadow-[0_1px_2px_rgba(30,50,30,0.04)] transition-all hover:-translate-y-0.5 hover:border-accent/35 hover:shadow-[0_8px_20px_rgba(40,90,50,0.08)]"
+            >
+              <p className="text-xs font-semibold uppercase tracking-wide text-accent-strong">
+                Upload my files
+              </p>
+              <p className="mt-1.5 text-sm leading-snug text-ink">
+                Add PDFs, docs, and spreadsheets to get cited answers and report-ready insights.
+              </p>
+            </button>
+          </div>
+        </div>
+      </div>
     )
   }
 
@@ -419,9 +472,28 @@ function StartHere({
       hint: primarySheet.filename,
       question: `What stands out in ${primarySheet.filename}?`,
     })
+
+    openings.push({
+      label: 'Executive report',
+      hint: 'Template',
+      question:
+        'Create an executive summary with the top KPIs, biggest changes, and three risks to watch.',
+    })
+    openings.push({
+      label: 'KPI review',
+      hint: 'Template',
+      question:
+        'Generate a KPI report: trend, variance, potential root causes, and suggested follow-up actions.',
+    })
+    openings.push({
+      label: 'Dashboard narrative',
+      hint: 'Template',
+      question:
+        'Write a dashboard-style narrative with section headings: performance, anomalies, forecast, and actions.',
+    })
   }
 
-  const limited = openings.slice(0, 4)
+  const limited = openings.slice(0, 6)
 
   return (
     <div className="flex h-full items-center justify-center px-4 py-10 sm:px-6">

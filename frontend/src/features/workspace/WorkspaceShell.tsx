@@ -140,6 +140,15 @@ export function WorkspaceShell() {
             <ChatView
               workspaceId={workspace.id}
               conversationId={activeConversationId}
+              onUseDemoWorkspace={() => {
+                const demo =
+                  workspaces?.find((candidate) => /northwind hq/i.test(candidate.name)) ??
+                  workspaces?.find((candidate) => /demo/i.test(candidate.name))
+                if (!demo) return
+                setActiveWorkspace(demo.id)
+                setActiveConversationId(null)
+                setPendingQuestion(null)
+              }}
               onOpenTask={(taskId) => {
                 setResumeTaskId(taskId)
                 openRight('task')
