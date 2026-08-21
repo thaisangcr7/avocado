@@ -43,9 +43,12 @@ const TYPE_ICON: Record<string, string> = {
 export function DocumentPanel({
   workspaceId,
   onSelectDocument,
+  compactUpload = false,
 }: {
   workspaceId: string
   onSelectDocument: (document: Document) => void
+  /** Smaller drop zone when upload also lives in the chat composer. */
+  compactUpload?: boolean
 }) {
   const { data, isLoading } = useDocuments(workspaceId)
   const { data: voice } = useVoiceCapabilities()
@@ -93,7 +96,9 @@ export function DocumentPanel({
   return (
     <div className="flex h-full flex-col">
       <div className="flex items-center justify-between border-b border-border-subtle px-4 py-3">
-        <h2 className="text-sm font-semibold text-ink">Documents</h2>
+        <h2 className="text-sm font-semibold text-ink">
+          {compactUpload ? 'Files' : 'Documents'}
+        </h2>
         {scopedDocumentIds.length > 0 && (
           <button
             onClick={clearScopedDocuments}
@@ -113,10 +118,11 @@ export function DocumentPanel({
           onDragLeave={() => setDragging(false)}
           onDrop={handleDrop}
           className={cn(
-            'rounded-lg border-2 border-dashed px-4 py-6 text-center transition-colors',
+            'rounded-2xl border-2 border-dashed text-center transition-all',
+            compactUpload ? 'px-3 py-3' : 'px-4 py-7',
             dragging
-              ? 'border-accent bg-accent-soft'
-              : 'border-border-subtle bg-surface-sunken/50',
+              ? 'scale-[1.01] border-accent bg-accent-soft shadow-[0_0_0_4px_rgba(60,120,70,0.08)]'
+              : 'border-border-subtle bg-surface-sunken/40 hover:border-accent/30 hover:bg-accent-soft/40',
           )}
         >
           <input
@@ -130,18 +136,25 @@ export function DocumentPanel({
             }}
             accept=".pdf,.docx,.xlsx,.csv,.txt,.md,.png,.jpg,.jpeg,.webp,.gif"
           />
-          <p className="text-sm text-ink-muted">
-            Drop files here, or{' '}
+          {!compactUpload && (
+            <p className="text-2xl" aria-hidden="true">
+              📎
+            </p>
+          )}
+          <p className={cn('text-sm font-medium text-ink', !compactUpload && 'mt-2')}>
+            {compactUpload ? 'Drop or ' : 'Drop files here, or '}
             <button
               onClick={() => fileInput.current?.click()}
-              className="font-medium text-accent-strong hover:underline"
+              className="font-semibold text-accent-strong hover:underline"
             >
               browse
             </button>
           </p>
-          <p className="mt-1 text-xs text-ink-muted/70">
-            PDF, Word, Excel, CSV, images, text
-          </p>
+          {!compactUpload && (
+            <p className="mt-1 text-xs text-ink-muted">
+              PDF, Word, Excel, CSV, images, text
+            </p>
+          )}
           {upload.isPending && (
             <div className="mt-3 flex items-center justify-center gap-2 text-xs text-ink-muted">
               <Spinner className="size-3" />

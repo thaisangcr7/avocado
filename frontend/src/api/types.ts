@@ -151,6 +151,43 @@ export interface AnalysisTable {
   truncated: boolean
 }
 
+export type VisualizationFieldType =
+  | 'nominal'
+  | 'ordinal'
+  | 'temporal'
+  | 'quantitative'
+
+export interface VisualizationEncoding {
+  field: string
+  type: VisualizationFieldType
+  title: string | null
+  format: string | null
+}
+
+export interface AnalysisVisualization {
+  title: string
+  description: string | null
+  mark: 'bar' | 'line' | 'area' | 'point' | 'arc' | 'boxplot'
+  table_index: number
+  x: VisualizationEncoding
+  y: VisualizationEncoding
+  color: VisualizationEncoding | null
+  interactive: boolean
+}
+
+export interface AnalysisMetric {
+  label: string
+  value: string
+  context: string | null
+  tone: 'neutral' | 'positive' | 'negative' | 'warning'
+}
+
+export interface AnalysisPresentation {
+  summary: string
+  metrics: AnalysisMetric[]
+  visualizations: AnalysisVisualization[]
+}
+
 export interface AnalysisRun {
   id: string
   workspace_id: string
@@ -164,6 +201,7 @@ export interface AnalysisRun {
     stdout?: string
     tables?: AnalysisTable[]
     scalars?: Record<string, unknown>
+    presentation?: AnalysisPresentation
   }
   chart_url: string | null
   error_message: string | null

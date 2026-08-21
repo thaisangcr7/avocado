@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 import uuid
 from collections.abc import AsyncIterator
 
@@ -10,8 +11,10 @@ from app.clients.llm.router import ModelRouter, TaskType
 from app.core.errors import AvocadoError, NotFoundError
 from app.core.logging import get_logger
 from app.models.conversations import Conversation, Message
-from app.models.enums import MessageRole
+from app.models.documents import Document
+from app.models.enums import DocumentType, MessageRole
 from app.repositories.conversations import ConversationRepository, MessageRepository
+from app.repositories.documents import DocumentRepository
 from app.schemas.chat import (
     ChatTurnResponse,
     ConversationCreate,
@@ -19,6 +22,7 @@ from app.schemas.chat import (
     MessageCreate,
     MessageResponse,
 )
+from app.services.analysis_service import AnalysisService
 from app.services.rag_service import SYSTEM_PROMPT, RAGService
 from app.services.usage_service import UsageService
 
@@ -34,6 +38,16 @@ TITLE_PROMPT = (
     "at the end.\n\n"
 )
 
+ANALYSIS_INTENT = re.compile(
+    r"\b("
+    r"analy[sz]e|analysis|dashboard|chart|graph|plot|visuali[sz]e|trend|"
+    r"forecast|correlation|distribution|outlier|variance|rank|strongest|weakest|"
+    r"top|bottom|highest|lowest|average|median|percent|growth|change over time"
+    r")\b",
+    re.IGNORECASE,
+)
+ANALYZABLE_TYPES = {DocumentType.CSV, DocumentType.XLSX}
+
 
 class ChatService:
     def __init__(
@@ -41,13 +55,17 @@ class ChatService:
         *,
         conversations: ConversationRepository,
         messages: MessageRepository,
+        documents: DocumentRepository,
         rag: RAGService,
+        analysis: AnalysisService,
         router: ModelRouter,
         usage: UsageService,
     ) -> None:
         self._conversations = conversations
         self._messages = messages
+        self._documents = documents
         self._rag = rag
+        self._analysis = analysis
         self._router = router
         self._usage = usage
 
@@ -205,10 +223,11 @@ class ChatService:
         preferred_model: str | None,
         payload: MessageCreate,
     ) -> AsyncIterator[dict]:
-        """Run a turn, emitting SSE-shaped events as the answer is produced.
+        """Run a turn, choosing full-data analysis or grounded retrieval.
 
-        Events: `citations` (once, before any text, so sources render
-        immediately), then `token` repeatedly, then `done`.
+        Analytical spreadsheet turns emit `analysis_started`,
+        `analysis_completed`, then `done`. Retrieval turns emit `citations`,
+        one or more `token` events, then `done`.
         """
         await self._require(conversation_id, workspace_id)
         history = await self._messages.recent_history(
@@ -224,6 +243,62 @@ class ChatService:
             )
         )
         await self._messages.commit()
+
+        analysis_document = await self._analysis_document(
+            workspace_id=workspace_id,
+            question=payload.content,
+            document_ids=payload.document_ids,
+        )
+        if analysis_document is not None:
+            yield {
+                "event": "analysis_started",
+                "data": {
+                    "document_id": str(analysis_document.id),
+                    "document_name": analysis_document.filename,
+                },
+            }
+            try:
+                run = await self._analysis.run(
+                    workspace_id=workspace_id,
+                    org_id=org_id,
+                    document_id=analysis_document.id,
+                    user_id=user_id,
+                    question=payload.content,
+                    table_id=None,
+                    preferred_model=preferred_model,
+                )
+            except AvocadoError as exc:
+                await self._record_failure(conversation_id, workspace_id, exc.detail)
+                yield {"event": "error", "data": {"detail": exc.detail}}
+                return
+
+            answer = run.result_summary or "The full-data analysis is ready."
+            await self._finish_stream(
+                conversation_id,
+                workspace_id,
+                org_id,
+                user_id,
+                answer,
+                [],
+                run.model_used,
+                0,
+                0,
+                run.execution_ms or 0,
+                record_usage=False,
+            )
+            yield {
+                "event": "analysis_completed",
+                "data": {
+                    "document_id": str(analysis_document.id),
+                    "document_name": analysis_document.filename,
+                    "run": run.model_dump(mode="json"),
+                },
+            }
+            yield {
+                "event": "done",
+                "data": {"model": run.model_used or "", "citations": []},
+            }
+            return
 
         hits = await self._rag.retrieve(
             workspace_id=workspace_id,
@@ -324,6 +399,8 @@ class ChatService:
         in_tokens: int,
         out_tokens: int,
         latency_ms: int,
+        *,
+        record_usage: bool = True,
     ) -> None:
         await self._messages.add(
             Message(
@@ -339,16 +416,55 @@ class ChatService:
             )
         )
         await self._messages.commit()
-        await self._usage.record(
-            org_id=org_id,
-            workspace_id=workspace_id,
-            user_id=user_id,
-            endpoint="messages.stream",
-            model=model_used,
-            input_tokens=in_tokens,
-            output_tokens=out_tokens,
-            latency_ms=latency_ms,
-        )
+        if record_usage:
+            await self._usage.record(
+                org_id=org_id,
+                workspace_id=workspace_id,
+                user_id=user_id,
+                endpoint="messages.stream",
+                model=model_used,
+                input_tokens=in_tokens,
+                output_tokens=out_tokens,
+                latency_ms=latency_ms,
+            )
+
+    async def _analysis_document(
+        self,
+        *,
+        workspace_id: uuid.UUID,
+        question: str,
+        document_ids: list[uuid.UUID],
+    ) -> Document | None:
+        """Select an explicitly relevant spreadsheet for analytical requests.
+
+        Ambiguous requests still use RAG instead of silently analysing the
+        wrong file. A filename/subject match or a single scoped spreadsheet is
+        enough to route the turn through the full-data sandbox.
+        """
+        if not ANALYSIS_INTENT.search(question):
+            return None
+
+        candidates = [
+            document
+            for document in await self._documents.list_ready(workspace_id)
+            if document.doc_type in ANALYZABLE_TYPES
+            and (not document_ids or document.id in document_ids)
+        ]
+        if not candidates:
+            return None
+        if len(candidates) == 1:
+            return candidates[0]
+
+        question_tokens = set(re.findall(r"[a-z0-9]+", question.lower()))
+        ranked: list[tuple[int, Document]] = []
+        for document in candidates:
+            filename_tokens = set(re.findall(r"[a-z0-9]+", document.filename.lower()))
+            # Generic file words do not prove that this is the intended table.
+            filename_tokens -= {"csv", "xlsx", "data", "table", "report"}
+            ranked.append((len(question_tokens & filename_tokens), document))
+
+        ranked.sort(key=lambda item: item[0], reverse=True)
+        return ranked[0][1] if ranked[0][0] > 0 else None
 
     async def _suggest_title(self, first_message: str) -> str:
         """Name a thread from its opening message.

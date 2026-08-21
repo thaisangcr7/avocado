@@ -435,8 +435,13 @@ def get_rag_service(chunks: ChunksDep, embeddings: EmbeddingsDep, router: Router
 
 
 def get_chat_service(
+    request: Request,
     conversations: ConversationsDep,
     messages: MessagesDep,
+    documents: DocumentsDep,
+    tables: TablesDep,
+    runs: RunsDep,
+    storage: StorageDep,
     chunks: ChunksDep,
     embeddings: EmbeddingsDep,
     router: RouterDep,
@@ -445,7 +450,18 @@ def get_chat_service(
     return ChatService(
         conversations=conversations,
         messages=messages,
+        documents=documents,
         rag=RAGService(chunks=chunks, embeddings=embeddings, router=router),
+        analysis=AnalysisService(
+            runs=runs,
+            documents=documents,
+            tables=tables,
+            storage=storage,
+            sandbox=request.app.state.sandbox,
+            limits=request.app.state.sandbox_limits,
+            router=router,
+            usage=usage,
+        ),
         router=router,
         usage=usage,
     )

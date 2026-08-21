@@ -265,6 +265,49 @@ async def test_streaming_emits_citations_then_tokens_then_done(client, account, 
     assert len(done["citations"]) == 1
 
 
+async def test_analytical_chat_question_runs_full_spreadsheet_analysis(client, account):
+    uploaded = await upload(
+        client,
+        account,
+        "revenue_by_region.csv",
+        b"month,region,revenue\n2025-01,North,100\n2025-01,South,80\n",
+        "text/csv",
+    )
+    document = await wait_for_ready(
+        client, uploaded.json()["document"]["id"], account["headers"]
+    )
+    conversation_id = await new_conversation(client, account)
+
+    events: list[tuple[str | None, dict]] = []
+    current = None
+    async with client.stream(
+        "POST",
+        f"/workspaces/{account['workspace_id']}/conversations/{conversation_id}/messages/stream",
+        json={
+            "content": "Create a dashboard showing the revenue trend by region.",
+        },
+        headers=account["headers"],
+    ) as response:
+        async for line in response.aiter_lines():
+            if line.startswith("event: "):
+                current = line[7:]
+            elif line.startswith("data: "):
+                events.append((current, json.loads(line[6:])))
+
+    names = [name for name, _ in events]
+    assert names == ["analysis_started", "analysis_completed", "done"]
+    completed = next(data for name, data in events if name == "analysis_completed")
+    assert completed["document_id"] == document["id"]
+    assert completed["run"]["status"] == "succeeded"
+    assert completed["run"]["result_data"]["tables"][0]["total_rows"] == 2
+
+    messages = await client.get(
+        f"/workspaces/{account['workspace_id']}/conversations/{conversation_id}/messages",
+        headers=account["headers"],
+    )
+    assert [message["role"] for message in messages.json()] == ["user", "assistant"]
+
+
 async def test_a_streamed_turn_is_persisted(client, account, fake_llm):
     await seed_document(client, account)
     conversation_id = await new_conversation(client, account)

@@ -7,14 +7,21 @@
  * first.
  */
 
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import Markdown from 'react-markdown'
 
+import { ApiError } from '@/api/client'
 import { streamMessage, type StreamSource } from '@/api/stream'
-import type { Citation, Message } from '@/api/types'
-import { Badge, Button, EmptyState, ErrorNotice, Spinner } from '@/components/ui/primitives'
-import { queryKeys, useDocuments, useMessages, useVoiceCapabilities } from '@/hooks/queries'
+import type { AnalysisRun, Citation, Message } from '@/api/types'
+import { Button, EmptyState, ErrorNotice, Spinner } from '@/components/ui/primitives'
+import {
+  queryKeys,
+  useDocuments,
+  useMessages,
+  useUploadDocument,
+  useVoiceCapabilities,
+} from '@/hooks/queries'
 import { SuggestionsBar } from '@/features/tasks/SuggestionsBar'
 import { VoiceInput } from '@/features/voice/VoiceInput'
 import { cn } from '@/lib/utils'
@@ -24,6 +31,7 @@ export function ChatView({
   workspaceId,
   conversationId,
   onOpenTask,
+  onOpenAnalysis,
   onStartConversation,
   pendingQuestion,
   onPendingQuestionSent,
@@ -31,6 +39,7 @@ export function ChatView({
   workspaceId: string
   conversationId: string | null
   onOpenTask?: (taskId: string) => void
+  onOpenAnalysis?: (documentId: string, run: AnalysisRun) => void
   /** Opens a new conversation, optionally seeded with a first question. */
   onStartConversation?: (question?: string) => void
   /** A question to ask as soon as this conversation opens. */
@@ -41,12 +50,16 @@ export function ChatView({
   const { data: voice } = useVoiceCapabilities()
   const scopedDocumentIds = useWorkspaceStore((state) => state.scopedDocumentIds)
   const queryClient = useQueryClient()
+  const upload = useUploadDocument(workspaceId)
+  const fileInputRef = useRef<HTMLInputElement>(null)
 
   const [draft, setDraft] = useState('')
   const [streamingText, setStreamingText] = useState('')
   const [streamingSources, setStreamingSources] = useState<StreamSource[]>([])
+  const [analysisDocumentName, setAnalysisDocumentName] = useState<string | null>(null)
   const [isStreaming, setIsStreaming] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [uploadError, setUploadError] = useState<string | null>(null)
 
   const bottomRef = useRef<HTMLDivElement>(null)
   const abortRef = useRef<AbortController | null>(null)
@@ -70,6 +83,7 @@ export function ChatView({
     setError(null)
     setStreamingText('')
     setStreamingSources([])
+    setAnalysisDocumentName(null)
     setIsStreaming(true)
 
     // Show the user's message immediately rather than waiting for the round
@@ -104,10 +118,17 @@ export function ChatView({
       {
         onSources: setStreamingSources,
         onToken: (text) => setStreamingText((current) => current + text),
+        onAnalysisStarted: ({ document_name }) => {
+          setAnalysisDocumentName(document_name)
+        },
+        onAnalysisCompleted: ({ document_id, run }) => {
+          onOpenAnalysis?.(document_id, run)
+        },
         onDone: () => {
           setIsStreaming(false)
           setStreamingText('')
           setStreamingSources([])
+          setAnalysisDocumentName(null)
           // Refetch so the optimistic user message is replaced by the real
           // persisted pair, with ids and usage figures.
           void queryClient.invalidateQueries({
@@ -121,6 +142,7 @@ export function ChatView({
           setError(detail)
           setIsStreaming(false)
           setStreamingText('')
+          setAnalysisDocumentName(null)
         },
       },
       controller.signal,
@@ -141,46 +163,84 @@ export function ChatView({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pendingQuestion, conversationId])
 
-  if (!conversationId) {
-    return <StartHere workspaceId={workspaceId} onStart={onStartConversation} />
+  const voiceFeedbackRef = useRef<HTMLDivElement>(null)
+
+  const handleFiles = useCallback(
+    async (files: FileList | null) => {
+      if (!files?.length) return
+      setUploadError(null)
+      for (const file of Array.from(files)) {
+        try {
+          await upload.mutateAsync(file)
+        } catch (caught) {
+          setUploadError(
+            caught instanceof ApiError
+              ? `${file.name}: ${caught.message}`
+              : `${file.name}: upload failed.`,
+          )
+          break
+        }
+      }
+    },
+    [upload],
+  )
+
+  function submitDraft() {
+    const question = draft.trim()
+    if (!question || isStreaming) return
+    if (!conversationId) {
+      setDraft('')
+      onStartConversation?.(question)
+      return
+    }
+    void handleSend()
   }
 
   return (
     <div className="flex h-full flex-col">
-      <div className="min-h-0 flex-1 overflow-y-auto px-6 py-6">
-        {isLoading ? (
+      <div className="min-h-0 flex-1 overflow-y-auto px-4 py-6 sm:px-6">
+        {!conversationId ? (
+          <StartHere workspaceId={workspaceId} onStart={onStartConversation} />
+        ) : isLoading ? (
           <div className="flex justify-center py-10">
             <Spinner className="size-5 text-ink-muted" />
           </div>
         ) : (messages?.length ?? 0) === 0 && !isStreaming ? (
           <EmptyState
-            icon={<span className="text-3xl">🥑</span>}
+            icon={<span className="text-2xl">🥑</span>}
             title="Ask anything about this workspace"
             description="Answers are grounded in your uploaded documents, with citations you can check."
           />
         ) : (
-          <div className="mx-auto max-w-3xl space-y-6">
+          <div className="mx-auto max-w-3xl space-y-5">
             {messages?.map((message) => (
               <MessageBubble key={message.id} message={message} />
             ))}
 
             {isStreaming && (
-              <StreamingBubble text={streamingText} sources={streamingSources} />
+              <StreamingBubble
+                text={streamingText}
+                sources={streamingSources}
+                analysisDocumentName={analysisDocumentName}
+              />
             )}
           </div>
         )}
         <div ref={bottomRef} />
       </div>
 
-      <div className="border-t border-border-subtle bg-surface-raised px-6 py-4">
+      <div className="border-t border-border-subtle/80 bg-surface-raised/90 px-4 py-4 backdrop-blur-md sm:px-6">
         <div className="mx-auto max-w-3xl">
-          {/* Nudges sit above the input: what needs attention, before what to
-              ask. */}
           <SuggestionsBar workspaceId={workspaceId} onOpenTask={onOpenTask} />
 
           {error && (
             <div className="mb-3">
               <ErrorNotice message={error} />
+            </div>
+          )}
+          {uploadError && (
+            <div className="mb-3">
+              <ErrorNotice message={uploadError} />
             </div>
           )}
 
@@ -191,50 +251,73 @@ export function ChatView({
             </p>
           )}
 
-          <div className="flex gap-2">
+          <div ref={voiceFeedbackRef} />
+
+          <div className="flex items-end gap-1 rounded-2xl border border-border-subtle bg-surface p-1.5 shadow-[0_2px_12px_rgba(30,50,30,0.05)] focus-within:border-accent/40 focus-within:ring-2 focus-within:ring-accent/15">
+            <button
+              type="button"
+              onClick={() => fileInputRef.current?.click()}
+              disabled={upload.isPending || isStreaming}
+              aria-label="Upload a document"
+              className="flex size-9 shrink-0 items-center justify-center rounded-xl text-lg font-medium text-ink-muted transition-colors hover:bg-surface-sunken hover:text-ink disabled:opacity-50"
+            >
+              {upload.isPending ? <Spinner className="size-3.5" /> : '+'}
+            </button>
+
             <textarea
               value={draft}
               onChange={(e) => setDraft(e.target.value)}
               onKeyDown={(e) => {
-                // Enter sends; Shift+Enter is a newline. Standard for chat.
                 if (e.key === 'Enter' && !e.shiftKey) {
                   e.preventDefault()
-                  void handleSend()
+                  submitDraft()
                 }
               }}
               placeholder="Ask a question about your documents…"
               rows={1}
               disabled={isStreaming}
               className={cn(
-                'min-h-[42px] max-h-40 flex-1 resize-y rounded-lg border border-border-subtle',
-                'bg-surface px-3 py-2.5 text-sm text-ink placeholder:text-ink-muted/70',
-                'focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/20',
-                'disabled:bg-surface-sunken',
+                'min-h-[36px] max-h-40 flex-1 resize-y rounded-xl border-0',
+                'bg-transparent px-2 py-2 text-sm text-ink placeholder:text-ink-muted/70',
+                'focus:outline-none focus:ring-0',
+                'disabled:opacity-60',
               )}
             />
+
+            {voice?.live_transcription && (
+              <VoiceInput
+                workspaceId={workspaceId}
+                disabled={isStreaming}
+                variant="icon"
+                feedbackHost={voiceFeedbackRef}
+                onTranscript={(text) =>
+                  setDraft((current) => (current ? `${current} ${text}` : text))
+                }
+              />
+            )}
+
             <Button
-              onClick={() => void handleSend()}
+              onClick={submitDraft}
               loading={isStreaming}
               disabled={!draft.trim()}
               className="self-end"
+              size="sm"
             >
               Send
             </Button>
           </div>
 
-          {/* Hidden entirely when the server has no STT configured, rather
-              than offered as a button that fails when pressed. */}
-          {voice?.live_transcription && (
-            <div className="mt-2">
-              <VoiceInput
-                workspaceId={workspaceId}
-                disabled={isStreaming}
-                onTranscript={(text) =>
-                  setDraft((current) => (current ? `${current} ${text}` : text))
-                }
-              />
-            </div>
-          )}
+          <input
+            ref={fileInputRef}
+            type="file"
+            multiple
+            className="sr-only"
+            accept=".pdf,.docx,.xlsx,.csv,.txt,.md,.png,.jpg,.jpeg,.webp,.gif"
+            onChange={(e) => {
+              void handleFiles(e.target.files)
+              e.target.value = ''
+            }}
+          />
         </div>
       </div>
     </div>
@@ -262,47 +345,137 @@ function StartHere({
   if (!ready.length) {
     return (
       <EmptyState
+        icon={<span className="text-2xl">📂</span>}
         title="Nothing to ask about yet"
         description="Upload a document or a spreadsheet, and questions about it get answered here with citations."
       />
     )
   }
 
-  // Named after real files so the opening question is answerable by
-  // construction, rather than a guess about what the corpus contains.
-  const openings = [
-    `What is in ${ready[0]!.filename}?`,
-    ready.length > 1 ? `Summarise the key points across these ${ready.length} documents.` : null,
-    'What policies does this workspace define?',
-  ].filter((value): value is string => Boolean(value))
+  const spreadsheets = ready.filter(
+    (doc) => doc.doc_type === 'xlsx' || doc.doc_type === 'csv',
+  )
+  const textDocs = ready.filter(
+    (doc) => doc.doc_type !== 'xlsx' && doc.doc_type !== 'csv',
+  )
+  const policyLike = textDocs.find((doc) =>
+    /policy|handbook|pto|leave|hr|process|sop/i.test(doc.filename),
+  )
+  const primaryText = policyLike ?? textDocs[0]
+  const primarySheet = spreadsheets[0]
+
+  // Openings are built from filenames and types actually present, so a finance
+  // CSV workspace does not get "what policies…" and a policy pack does not get
+  // "month-over-month trend".
+  const openings: { label: string; question: string; hint: string }[] = []
+
+  if (primaryText) {
+    openings.push({
+      label: 'Open a file',
+      hint: primaryText.filename,
+      question: `What is in ${primaryText.filename}?`,
+    })
+  } else if (primarySheet) {
+    openings.push({
+      label: 'Open a file',
+      hint: primarySheet.filename,
+      question: `What columns and measures are in ${primarySheet.filename}?`,
+    })
+  }
+
+  if (textDocs.length > 1) {
+    openings.push({
+      label: 'Across the corpus',
+      hint: `${textDocs.length} documents`,
+      question: `Summarise the key points across these ${textDocs.length} documents.`,
+    })
+  }
+
+  if (policyLike || textDocs.some((doc) => /policy|handbook|hr/i.test(doc.filename))) {
+    openings.push({
+      label: 'Find a policy',
+      hint: 'Cited answer',
+      question: 'What policies does this workspace define?',
+    })
+    if (policyLike && /pto|leave|vacation|time.?off/i.test(policyLike.filename)) {
+      openings.push({
+        label: 'Semantic check',
+        hint: 'No shared keywords',
+        question:
+          "If I don't use all my paid days off this year, how many roll into next year?",
+      })
+    }
+  } else if (textDocs.length > 0) {
+    openings.push({
+      label: 'Key takeaways',
+      hint: 'Cited answer',
+      question: `What are the most important rules or decisions in ${primaryText!.filename}?`,
+    })
+  }
+
+  if (primarySheet) {
+    openings.push({
+      label: 'Analyse data',
+      hint: primarySheet.filename,
+      question: `What stands out in ${primarySheet.filename}?`,
+    })
+  }
+
+  const limited = openings.slice(0, 4)
 
   return (
-    <div className="flex h-full items-center justify-center px-6">
-      <div className="w-full max-w-md space-y-5 text-center">
-        <div className="space-y-1.5">
-          <h2 className="text-base font-semibold text-ink">Ask about your documents</h2>
-          <p className="text-sm text-ink-muted">
-            {ready.length} document{ready.length === 1 ? '' : 's'} ready. Every answer cites the
-            passage it came from.
+    <div className="flex h-full items-center justify-center px-4 py-10 sm:px-6">
+      <div className="animate-in-slow w-full max-w-lg space-y-7">
+        <div className="space-y-3 text-center">
+          <div
+            className="mx-auto flex size-14 items-center justify-center rounded-2xl bg-accent-soft text-2xl shadow-[0_6px_20px_rgba(40,90,50,0.1)]"
+            aria-hidden="true"
+          >
+            🥑
+          </div>
+          <h2 className="font-display text-2xl font-semibold tracking-tight text-ink text-balance">
+            What do you want to know?
+          </h2>
+          <p className="text-sm leading-relaxed text-ink-muted text-balance">
+            {ready.length} document{ready.length === 1 ? '' : 's'} ready
+            {spreadsheets.length > 0
+              ? ` · ${spreadsheets.length} spreadsheet${spreadsheets.length === 1 ? '' : 's'} for analysis`
+              : ''}
+            . Suggestions match what you uploaded.
           </p>
         </div>
 
-        <div className="space-y-2">
-          {openings.map((question) => (
+        <div className="animate-stagger space-y-2.5">
+          {limited.map((opening) => (
             <button
-              key={question}
+              key={opening.question}
               type="button"
-              onClick={() => onStart?.(question)}
-              className="w-full rounded-xl border border-border-subtle bg-surface-raised px-4 py-2.5 text-left text-sm text-ink transition-colors hover:border-accent/40 hover:bg-surface-sunken"
+              onClick={() => onStart?.(opening.question)}
+              className="group flex w-full items-start gap-3 rounded-2xl border border-border-subtle/80 bg-surface-raised/90 px-4 py-3.5 text-left shadow-[0_1px_2px_rgba(30,50,30,0.04)] transition-all hover:-translate-y-0.5 hover:border-accent/35 hover:shadow-[0_8px_20px_rgba(40,90,50,0.08)]"
             >
-              {question}
+              <span className="mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-xl bg-accent-soft text-xs font-semibold text-accent-strong transition-colors group-hover:bg-accent group-hover:text-white">
+                →
+              </span>
+              <span className="min-w-0 flex-1">
+                <span className="block text-[11px] font-semibold uppercase tracking-wide text-accent-strong">
+                  {opening.label}
+                  <span className="ml-2 font-medium normal-case tracking-normal text-ink-muted/70">
+                    {opening.hint}
+                  </span>
+                </span>
+                <span className="mt-0.5 block text-sm leading-snug text-ink">
+                  {opening.question}
+                </span>
+              </span>
             </button>
           ))}
         </div>
 
-        <Button variant="secondary" size="sm" onClick={() => onStart?.()}>
-          Or start a blank conversation
-        </Button>
+        <div className="text-center">
+          <Button variant="secondary" size="sm" onClick={() => onStart?.()}>
+            Or start a blank conversation
+          </Button>
+        </div>
       </div>
     </div>
   )
@@ -319,14 +492,13 @@ function StartHere({
  */
 function AnswerBody({ content }: { content: string }) {
   return (
-    <div className="space-y-2 [&_li]:ml-4 [&_li]:list-disc [&_ol]:space-y-1 [&_ul]:space-y-1">
+    <div className="space-y-3 text-[15px] leading-7 text-ink [&_blockquote]:border-l-2 [&_blockquote]:border-accent/40 [&_blockquote]:pl-4 [&_blockquote]:text-ink-muted [&_h1]:font-display [&_h1]:text-xl [&_h1]:font-semibold [&_h2]:font-display [&_h2]:text-lg [&_h2]:font-semibold [&_h3]:font-semibold [&_li]:ml-5 [&_li]:pl-1 [&_ol]:list-decimal [&_ol]:space-y-1.5 [&_ul]:list-disc [&_ul]:space-y-1.5">
       <Markdown
         components={{
-          // The bubble sets its own spacing; paragraph margins would double it.
-          p: ({ children }) => <p className="whitespace-pre-wrap">{children}</p>,
+          p: ({ children }) => <p>{children}</p>,
           strong: ({ children }) => <strong className="font-semibold">{children}</strong>,
           code: ({ children }) => (
-            <code className="rounded bg-surface-sunken px-1 py-0.5 font-mono text-[0.9em]">
+            <code className="rounded-md bg-surface-sunken px-1.5 py-0.5 font-mono text-[0.88em]">
               {children}
             </code>
           ),
@@ -350,20 +522,43 @@ function AnswerBody({ content }: { content: string }) {
 
 function MessageBubble({ message }: { message: Message }) {
   const isUser = message.role === 'user'
+  const [copied, setCopied] = useState(false)
+
+  async function copyAnswer() {
+    await navigator.clipboard.writeText(message.content)
+    setCopied(true)
+    window.setTimeout(() => setCopied(false), 1500)
+  }
 
   return (
-    <div className={cn('animate-in', isUser ? 'flex justify-end' : '')}>
-      <div className={cn(isUser ? 'max-w-[80%]' : 'w-full')}>
+    <div className={cn('animate-in', isUser ? 'flex justify-end' : 'group flex gap-3')}>
+      {!isUser && (
+        <div
+          className="mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-xl bg-accent-soft text-sm"
+          aria-hidden="true"
+        >
+          🥑
+        </div>
+      )}
+      <div className={cn(isUser ? 'max-w-[80%]' : 'min-w-0 flex-1')}>
+        {!isUser && !message.failed && (
+          <div className="mb-2 flex items-center justify-between">
+            <span className="text-xs font-semibold text-ink">Avocado</span>
+            {message.model_used && (
+              <span className="text-[11px] text-ink-muted">{message.model_used}</span>
+            )}
+          </div>
+        )}
         <div
           className={cn(
-            'rounded-2xl px-4 py-3 text-sm leading-relaxed',
+            isUser && 'rounded-2xl rounded-br-md px-4 py-2.5 text-sm leading-relaxed',
             isUser
-              ? 'bg-accent text-white'
+              ? 'bg-surface-sunken text-ink'
               : message.failed
                 ? // Rendered as what it is — a turn that did not produce an
                   // answer — rather than as if the model had said this.
-                  'border border-danger/30 bg-danger-soft text-danger'
-                : 'border border-border-subtle bg-surface-raised text-ink',
+                  'rounded-xl border border-danger/30 bg-danger-soft px-4 py-3 text-danger'
+                : 'text-ink',
           )}
         >
           {message.failed && (
@@ -379,14 +574,19 @@ function MessageBubble({ message }: { message: Message }) {
         </div>
 
         {!isUser && !message.failed && (
-          <div className="mt-2 space-y-2">
+          <div className="mt-4 space-y-3">
             {message.citations.length > 0 && (
               <CitationList citations={message.citations} />
             )}
 
-            <div className="flex flex-wrap items-center gap-2 text-xs text-ink-muted">
-              {/* Always shown, so a user on Auto knows which model answered. */}
-              {message.model_used && <Badge tone="neutral">{message.model_used}</Badge>}
+            <div className="flex flex-wrap items-center gap-3 text-[11px] text-ink-muted">
+              <button
+                type="button"
+                onClick={() => void copyAnswer()}
+                className="rounded-md px-1.5 py-1 font-medium hover:bg-surface-sunken hover:text-ink"
+              >
+                {copied ? 'Copied' : 'Copy'}
+              </button>
               {message.latency_ms ? <span>{message.latency_ms}ms</span> : null}
               {message.output_tokens ? (
                 <span>{message.output_tokens} tokens out</span>
@@ -403,11 +603,11 @@ function CitationList({ citations }: { citations: Citation[] }) {
   const [expanded, setExpanded] = useState<string | null>(null)
 
   return (
-    <div className="space-y-1.5">
-      <p className="text-xs font-medium text-ink-muted">
+    <div className="space-y-2">
+      <p className="text-xs font-semibold text-ink">
         Sources ({citations.length})
       </p>
-      <ul className="space-y-1.5">
+      <ul className="grid gap-2 sm:grid-cols-2">
         {citations.map((citation, index) => {
           const isOpen = expanded === citation.chunk_id
           const location = [
@@ -423,10 +623,10 @@ function CitationList({ citations }: { citations: Citation[] }) {
               <button
                 onClick={() => setExpanded(isOpen ? null : citation.chunk_id)}
                 aria-expanded={isOpen}
-                className="w-full rounded-lg border border-border-subtle bg-surface-sunken/60 px-3 py-2 text-left transition-colors hover:bg-surface-sunken"
+                className="h-full w-full rounded-xl border border-border-subtle bg-surface-raised px-3 py-2.5 text-left shadow-[0_1px_2px_rgba(30,50,30,0.03)] transition-colors hover:border-accent/40 hover:bg-accent-soft/30"
               >
                 <div className="flex items-center gap-2">
-                  <span className="flex size-5 shrink-0 items-center justify-center rounded bg-accent-soft text-[10px] font-semibold text-accent-strong">
+                  <span className="flex size-5 shrink-0 items-center justify-center rounded-md bg-accent-soft text-[10px] font-semibold text-accent-strong">
                     {index + 1}
                   </span>
                   <span className="min-w-0 flex-1 truncate text-xs font-medium text-ink">
@@ -435,13 +635,10 @@ function CitationList({ citations }: { citations: Citation[] }) {
                   {location && (
                     <span className="shrink-0 text-[11px] text-ink-muted">{location}</span>
                   )}
-                  <span className="shrink-0 text-[11px] text-ink-muted/70">
-                    {(citation.score * 100).toFixed(0)}%
-                  </span>
                 </div>
 
                 {isOpen && (
-                  <p className="mt-2 border-t border-border-subtle pt-2 text-xs leading-relaxed text-ink-muted">
+                  <p className="mt-2 border-t border-border-subtle pt-2 text-xs leading-5 text-ink-muted">
                     {citation.snippet}
                   </p>
                 )}
@@ -454,28 +651,50 @@ function CitationList({ citations }: { citations: Citation[] }) {
   )
 }
 
-function StreamingBubble({ text, sources }: { text: string; sources: StreamSource[] }) {
+function StreamingBubble({
+  text,
+  sources,
+  analysisDocumentName,
+}: {
+  text: string
+  sources: StreamSource[]
+  analysisDocumentName: string | null
+}) {
   return (
-    <div className="animate-in w-full">
-      {sources.length > 0 && (
-        <p className="mb-2 text-xs text-ink-muted">
-          Reading {sources.length} source{sources.length === 1 ? '' : 's'}…
-        </p>
-      )}
-      <div className="rounded-2xl border border-border-subtle bg-surface-raised px-4 py-3 text-sm leading-relaxed text-ink">
-        {text ? (
-          // Rendered the same way as a finished answer, so the text does not
-          // visibly reflow the moment the stream completes.
-          <div className="relative">
-            <AnswerBody content={text} />
-            <span className="ml-0.5 inline-block h-4 w-1.5 animate-pulse bg-accent align-text-bottom" />
-          </div>
-        ) : (
-          <div className="flex items-center gap-2 text-ink-muted">
-            <Spinner className="size-3.5" />
-            <span className="text-xs">Thinking…</span>
-          </div>
+    <div className="animate-in flex gap-3">
+      <div
+        className="mt-1 flex size-8 shrink-0 items-center justify-center rounded-xl bg-accent-soft text-sm"
+        aria-hidden="true"
+      >
+        🥑
+      </div>
+      <div className="min-w-0 flex-1">
+        <p className="mb-2 text-xs font-semibold text-ink">Avocado</p>
+        {sources.length > 0 && (
+          <p className="mb-3 flex items-center gap-2 text-xs text-ink-muted">
+            <span className="size-1.5 animate-pulse-soft rounded-full bg-accent" />
+            Read {sources.length} source{sources.length === 1 ? '' : 's'} · writing answer…
+          </p>
         )}
+        <div className="text-ink">
+          {text ? (
+            // Rendered the same way as a finished answer, so the text does not
+            // visibly reflow the moment the stream completes.
+            <div className="relative">
+              <AnswerBody content={text} />
+              <span className="ml-0.5 inline-block h-4 w-1.5 animate-pulse-soft bg-accent align-text-bottom" />
+            </div>
+          ) : (
+            <div className="flex items-center gap-2 text-ink-muted">
+              <Spinner className="size-3.5" />
+              <span className="text-xs">
+                {analysisDocumentName
+                  ? `Analyzing every row in ${analysisDocumentName}…`
+                  : 'Thinking…'}
+              </span>
+            </div>
+          )}
+        </div>
       </div>
     </div>
   )

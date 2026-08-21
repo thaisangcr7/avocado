@@ -128,9 +128,9 @@ async def stream_message(
 ) -> StreamingResponse:
     """Same turn, streamed as Server-Sent Events.
 
-    Event order is `citations`, then `token` repeatedly, then `done`. Sources
-    arrive first so the UI can show what the answer will be based on while it
-    is still being written.
+    Retrieval turns emit `citations`, streamed `token` events, then `done`.
+    Spreadsheet analysis turns emit `analysis_started`,
+    `analysis_completed`, then `done`.
     """
 
     async def event_stream() -> AsyncIterator[str]:

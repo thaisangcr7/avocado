@@ -1,18 +1,17 @@
 /**
  * The application shell: workspace switcher, conversation list, model picker,
- * and the main pane (chat, or analysis when a spreadsheet is opened).
+ * chat in the center, and a right rail for Documents + Artifacts.
  */
 
 import { useEffect, useState } from 'react'
 
-import type { Document } from '@/api/types'
+import type { AnalysisRun, Document } from '@/api/types'
 import { AnalysisView } from '@/features/analysis/AnalysisView'
 import { ChatView } from '@/features/chat/ChatView'
 import { DocumentPanel } from '@/features/documents/DocumentPanel'
-import { KnowledgeMapView } from '@/features/knowledge/KnowledgeMap'
-import { TaskBoard } from '@/features/tasks/TaskBoard'
 import { TaskResumePanel } from '@/features/tasks/TaskResumePanel'
 import { TeamSettings } from '@/features/teams/TeamSettings'
+import { ArtifactPanel } from '@/features/workspace/ArtifactPanel'
 import { Button, Spinner } from '@/components/ui/primitives'
 import {
   useConversations,
@@ -29,36 +28,33 @@ import { cn, formatRelativeTime } from '@/lib/utils'
 import { useAuthStore } from '@/stores/auth'
 import { useWorkspaceStore } from '@/stores/workspace'
 
-/**
- * Which single pane is visible below `lg`. The three-column layout does not
- * fit a phone, so on small screens exactly one pane is shown at a time and a
- * tab bar switches between them.
- */
-type MobilePane = 'menu' | 'main' | 'documents'
+type LibraryTab = 'documents' | 'artifacts'
+type RightPanelView = LibraryTab | 'analysis' | 'task' | 'team'
 
 export function WorkspaceShell() {
   const { data: workspaces, isLoading } = useWorkspaces()
   const { activeWorkspaceId, setActiveWorkspace } = useWorkspaceStore()
   const [activeConversationId, setActiveConversationId] = useState<string | null>(null)
   const [analysisDocumentId, setAnalysisDocumentId] = useState<string | null>(null)
+  const [analysisRun, setAnalysisRun] = useState<AnalysisRun | null>(null)
   const [settingsTeamId, setSettingsTeamId] = useState<string | null>(null)
-  // Which of the mutually exclusive main-pane views is open, if any.
-  const [pane, setPane] = useState<'chat' | 'tasks' | 'knowledge'>('chat')
   const [resumeTaskId, setResumeTaskId] = useState<string | null>(null)
-  const [mobilePane, setMobilePane] = useState<MobilePane>('main')
+  const [threadsOpen, setThreadsOpen] = useState(
+    () => window.matchMedia('(min-width: 1024px)').matches,
+  )
+  const [rightOpen, setRightOpen] = useState(
+    () => window.matchMedia('(min-width: 1024px)').matches,
+  )
+  const [libraryTab, setLibraryTab] = useState<LibraryTab>('documents')
+  const [rightView, setRightView] = useState<RightPanelView>('documents')
   // A question picked on the landing pane, held until the conversation it
   // will be asked in has been created.
   const [pendingQuestion, setPendingQuestion] = useState<string | null>(null)
   const startConversation = useCreateConversation(activeWorkspaceId ?? '')
 
-  // Opening one main-pane view closes the others, so the pane never has two
-  // things claiming it.
-  function show(next: 'chat' | 'tasks' | 'knowledge') {
-    setPane(next)
-    setAnalysisDocumentId(null)
-    setSettingsTeamId(null)
-    setResumeTaskId(null)
-    setMobilePane('main')
+  function openRight(view: RightPanelView) {
+    setRightView(view)
+    setRightOpen(true)
   }
 
   // Settle on a workspace once they load: the stored one if it still exists,
@@ -80,82 +76,79 @@ export function WorkspaceShell() {
   const workspace = workspaces?.find((w) => w.id === activeWorkspaceId) ?? null
 
   return (
-    <div className="flex h-screen flex-col bg-surface">
+    <div className="bg-atmosphere flex h-screen flex-col">
       <TopBar
-        activePane={pane}
-        onShowPane={show}
+        threadsOpen={threadsOpen}
+        rightOpen={rightOpen}
+        onToggleThreads={() => setThreadsOpen((open) => !open)}
+        onToggleRight={() => setRightOpen((open) => !open)}
         onOpenTeam={(teamId) => {
-          show('chat')
           setSettingsTeamId(teamId)
+          openRight('team')
         }}
       />
 
-      <div className="flex min-h-0 flex-1">
+      <div className="relative flex min-h-0 flex-1 overflow-hidden">
+        {(threadsOpen || rightOpen) && (
+          <button
+            type="button"
+            aria-label="Close side panel"
+            className="absolute inset-0 z-20 bg-ink/10 backdrop-blur-[1px] lg:hidden"
+            onClick={() => {
+              setThreadsOpen(false)
+              setRightOpen(false)
+            }}
+          />
+        )}
+
         <aside
           className={cn(
-            'flex-col border-r border-border-subtle bg-surface-raised',
-            'lg:flex lg:w-64 lg:shrink-0',
-            mobilePane === 'menu' ? 'flex w-full' : 'hidden',
+            'z-30 flex-col border-r border-border-subtle/80 bg-surface-raised/95 backdrop-blur-md',
+            'fixed bottom-0 left-0 top-14 w-[min(20rem,86vw)] shadow-2xl lg:static lg:shadow-none',
+            threadsOpen ? 'flex lg:w-72 lg:shrink-0' : 'hidden',
           )}
         >
+          <div className="flex h-12 shrink-0 items-center justify-between border-b border-border-subtle/80 px-3 lg:hidden">
+            <span className="text-sm font-semibold text-ink">Threads</span>
+            <button
+              type="button"
+              onClick={() => setThreadsOpen(false)}
+              aria-label="Close threads"
+              className="flex size-8 items-center justify-center rounded-lg text-ink-muted hover:bg-surface-sunken hover:text-ink"
+            >
+              ×
+            </button>
+          </div>
           <WorkspaceSwitcher />
           <ConversationList
             workspaceId={activeWorkspaceId}
             activeConversationId={activeConversationId}
             onSelect={(id) => {
               setActiveConversationId(id)
-              show('chat')
-              // Choosing a thread on a phone should show it, not leave the
-              // user staring at the list they just picked from.
-              setMobilePane('main')
+              if (window.innerWidth < 1024) setThreadsOpen(false)
             }}
           />
           <WorkspaceFooter workspaceId={activeWorkspaceId} />
         </aside>
 
-        <main
-          className={cn(
-            'min-w-0 flex-1 bg-surface',
-            mobilePane === 'main' ? 'block' : 'hidden lg:block',
-          )}
-        >
+        <main className="min-w-0 flex-1">
           {!workspace ? (
             <div className="flex h-full items-center justify-center text-sm text-ink-muted">
               Create a workspace to begin.
             </div>
-          ) : resumeTaskId ? (
-            <TaskResumePanel
-              workspaceId={workspace.id}
-              taskId={resumeTaskId}
-              onOpenThread={(conversationId) => {
-                setActiveConversationId(conversationId)
-                show('chat')
-              }}
-              onClose={() => setResumeTaskId(null)}
-            />
-          ) : pane === 'tasks' ? (
-            <TaskBoard
-              workspaceId={workspace.id}
-              onResumeTask={setResumeTaskId}
-              onClose={() => show('chat')}
-            />
-          ) : pane === 'knowledge' ? (
-            <KnowledgeMapView workspaceId={workspace.id} onClose={() => show('chat')} />
-          ) : settingsTeamId ? (
-            <TeamSettings
-              teamId={settingsTeamId}
-              onClose={() => setSettingsTeamId(null)}
-            />
-          ) : analysisDocumentId ? (
-            <AnalysisView
-              documentId={analysisDocumentId}
-              onClose={() => setAnalysisDocumentId(null)}
-            />
           ) : (
             <ChatView
               workspaceId={workspace.id}
               conversationId={activeConversationId}
-              onOpenTask={setResumeTaskId}
+              onOpenTask={(taskId) => {
+                setResumeTaskId(taskId)
+                openRight('task')
+              }}
+              onOpenAnalysis={(documentId, run) => {
+                setAnalysisDocumentId(documentId)
+                setAnalysisRun(run)
+                openRight('analysis')
+              }}
               pendingQuestion={pendingQuestion}
               onPendingQuestionSent={() => setPendingQuestion(null)}
               onStartConversation={(question) =>
@@ -172,73 +165,167 @@ export function WorkspaceShell() {
 
         <aside
           className={cn(
-            'border-l border-border-subtle bg-surface-raised',
-            'lg:block lg:w-80 lg:shrink-0',
-            mobilePane === 'documents' ? 'block w-full' : 'hidden',
+            'z-30 flex-col border-l border-border-subtle/80 bg-surface-raised/95 backdrop-blur-md',
+            'fixed bottom-0 right-0 top-14 w-[min(46rem,94vw)] shadow-2xl lg:static lg:shadow-none',
+            rightOpen ? 'flex lg:w-[min(42vw,44rem)] lg:shrink-0' : 'hidden',
           )}
         >
           {activeWorkspaceId && (
-            <DocumentPanel
+            <LibraryRail
               workspaceId={activeWorkspaceId}
+              tab={libraryTab}
+              view={rightView}
+              onTabChange={(tab) => {
+                setLibraryTab(tab)
+                setRightView(tab)
+              }}
+              onClose={() => setRightOpen(false)}
               onSelectDocument={(document: Document) => {
-                show('chat')
                 setAnalysisDocumentId(document.id)
+                setAnalysisRun(null)
+                openRight('analysis')
+              }}
+              onResumeTask={(taskId) => {
+                setResumeTaskId(taskId)
+                openRight('task')
+              }}
+              onOpenAnalysis={(documentId, run) => {
+                setAnalysisDocumentId(documentId)
+                setAnalysisRun(run ?? null)
+                openRight('analysis')
+              }}
+              analysisDocumentId={analysisDocumentId}
+              analysisRun={analysisRun}
+              resumeTaskId={resumeTaskId}
+              settingsTeamId={settingsTeamId}
+              onOpenThread={(conversationId) => {
+                setActiveConversationId(conversationId)
+                setRightOpen(false)
               }}
             />
           )}
         </aside>
       </div>
-
-      <MobileTabBar active={mobilePane} onChange={setMobilePane} />
     </div>
   )
 }
 
-function MobileTabBar({
-  active,
-  onChange,
+function LibraryRail({
+  workspaceId,
+  tab,
+  view,
+  onTabChange,
+  onClose,
+  onSelectDocument,
+  onResumeTask,
+  onOpenAnalysis,
+  analysisDocumentId,
+  analysisRun,
+  resumeTaskId,
+  settingsTeamId,
+  onOpenThread,
 }: {
-  active: MobilePane
-  onChange: (pane: MobilePane) => void
+  workspaceId: string
+  tab: LibraryTab
+  view: RightPanelView
+  onTabChange: (tab: LibraryTab) => void
+  onClose: () => void
+  onSelectDocument: (document: Document) => void
+  onResumeTask: (taskId: string) => void
+  onOpenAnalysis: (documentId: string, run?: AnalysisRun) => void
+  analysisDocumentId: string | null
+  analysisRun: AnalysisRun | null
+  resumeTaskId: string | null
+  settingsTeamId: string | null
+  onOpenThread: (conversationId: string) => void
 }) {
-  const tabs: { id: MobilePane; label: string; icon: string }[] = [
-    { id: 'menu', label: 'Threads', icon: '☰' },
-    { id: 'main', label: 'Chat', icon: '💬' },
-    { id: 'documents', label: 'Documents', icon: '📁' },
-  ]
-
   return (
-    <nav
-      aria-label="Sections"
-      className="flex shrink-0 border-t border-border-subtle bg-surface-raised lg:hidden"
-    >
-      {tabs.map((tab) => (
-        <button
-          key={tab.id}
-          onClick={() => onChange(tab.id)}
-          aria-current={active === tab.id ? 'page' : undefined}
-          className={cn(
-            'flex flex-1 flex-col items-center gap-0.5 py-2 text-xs font-medium transition-colors',
-            active === tab.id
-              ? 'text-accent-strong'
-              : 'text-ink-muted hover:text-ink',
-          )}
+    <div className="flex h-full min-h-0 flex-col">
+      <div className="flex h-12 shrink-0 items-center gap-2 border-b border-border-subtle/80 px-2">
+        <nav
+          className="flex min-w-0 flex-1 items-center gap-0.5 rounded-xl bg-surface-sunken/80 p-0.5"
+          aria-label="Library"
         >
-          <span aria-hidden="true">{tab.icon}</span>
-          {tab.label}
+          {(
+            [
+              { id: 'documents', label: 'Documents' },
+              { id: 'artifacts', label: 'Artifacts' },
+            ] as const
+          ).map((candidate) => (
+            <button
+              key={candidate.id}
+              type="button"
+              onClick={() => onTabChange(candidate.id)}
+              aria-current={tab === candidate.id ? 'page' : undefined}
+              className={cn(
+                'flex-1 rounded-lg px-3 py-1.5 text-sm font-medium transition-all',
+                tab === candidate.id
+                  ? 'bg-surface-raised text-ink shadow-[0_1px_3px_rgba(30,50,30,0.1)]'
+                  : 'text-ink-muted hover:text-ink',
+              )}
+            >
+              {candidate.label}
+            </button>
+          ))}
+        </nav>
+        <button
+          type="button"
+          onClick={onClose}
+          aria-label="Close library"
+          className="flex size-8 shrink-0 items-center justify-center rounded-lg text-lg text-ink-muted hover:bg-surface-sunken hover:text-ink"
+        >
+          ×
         </button>
-      ))}
-    </nav>
+      </div>
+
+      <div className="min-h-0 flex-1">
+        {view === 'analysis' && analysisDocumentId ? (
+          <AnalysisView
+            documentId={analysisDocumentId}
+            initialRun={analysisRun}
+            onClose={() => onTabChange('artifacts')}
+          />
+        ) : view === 'task' && resumeTaskId ? (
+          <TaskResumePanel
+            workspaceId={workspaceId}
+            taskId={resumeTaskId}
+            onOpenThread={onOpenThread}
+            onClose={() => onTabChange('artifacts')}
+          />
+        ) : view === 'team' && settingsTeamId ? (
+          <TeamSettings
+            teamId={settingsTeamId}
+            onClose={() => onTabChange(tab)}
+          />
+        ) : view === 'documents' ? (
+          <DocumentPanel
+            workspaceId={workspaceId}
+            onSelectDocument={onSelectDocument}
+            compactUpload
+          />
+        ) : (
+          <ArtifactPanel
+            workspaceId={workspaceId}
+            onResumeTask={onResumeTask}
+            onOpenAnalysis={onOpenAnalysis}
+          />
+        )}
+      </div>
+    </div>
   )
 }
 
 function TopBar({
-  activePane,
-  onShowPane,
+  threadsOpen,
+  rightOpen,
+  onToggleThreads,
+  onToggleRight,
   onOpenTeam,
 }: {
-  activePane: 'chat' | 'tasks' | 'knowledge'
-  onShowPane: (pane: 'chat' | 'tasks' | 'knowledge') => void
+  threadsOpen: boolean
+  rightOpen: boolean
+  onToggleThreads: () => void
+  onToggleRight: () => void
   onOpenTeam: (teamId: string) => void
 }) {
   const user = useAuthStore((state) => state.user)
@@ -246,42 +333,39 @@ function TopBar({
   const { data: teams } = useTeams()
 
   return (
-    <header className="flex h-14 shrink-0 items-center justify-between gap-2 border-b border-border-subtle bg-surface-raised px-3 shadow-[0_1px_2px_rgba(0,0,0,0.03)] sm:px-4">
-      <div className="flex min-w-0 items-center gap-2">
-        <span className="text-xl" aria-hidden="true">
+    <header className="flex h-14 shrink-0 items-center justify-between gap-2 border-b border-border-subtle/80 bg-surface-raised/85 px-3 shadow-[0_1px_0_rgba(30,50,30,0.04)] backdrop-blur-md sm:px-4">
+      <div className="flex min-w-0 items-center gap-2.5">
+        <button
+          type="button"
+          onClick={onToggleThreads}
+          aria-label={threadsOpen ? 'Collapse threads' : 'Open threads'}
+          aria-pressed={threadsOpen}
+          className={cn(
+            'flex size-8 items-center justify-center rounded-lg transition-colors',
+            threadsOpen
+              ? 'bg-accent-soft text-accent-strong'
+              : 'text-ink-muted hover:bg-surface-sunken hover:text-ink',
+          )}
+        >
+          <span aria-hidden="true">☰</span>
+        </button>
+        <span
+          className="flex size-8 items-center justify-center rounded-xl bg-accent-soft text-lg"
+          aria-hidden="true"
+        >
           🥑
         </span>
-        <span className="font-semibold text-ink">Avocado</span>
+        <span className="font-display text-lg font-semibold tracking-tight text-ink">
+          Avocado
+        </span>
         {user && (
-          // Secondary identity: the first thing to go when space is tight.
-          <span className="ml-2 hidden truncate text-sm text-ink-muted md:inline">
+          <span className="ml-1 hidden truncate rounded-full bg-surface-sunken px-2.5 py-0.5 text-xs font-medium text-ink-muted md:inline">
             {user.organization_name}
           </span>
         )}
       </div>
 
       <div className="flex min-w-0 items-center gap-2 sm:gap-3">
-        <nav
-          className="hidden items-center gap-0.5 rounded-xl bg-surface-sunken p-0.5 sm:flex"
-          aria-label="Views"
-        >
-          {(['chat', 'tasks', 'knowledge'] as const).map((candidate) => (
-            <button
-              key={candidate}
-              onClick={() => onShowPane(candidate)}
-              aria-current={activePane === candidate ? 'page' : undefined}
-              className={cn(
-                'rounded-lg px-3 py-1 text-sm font-medium capitalize transition-colors',
-                activePane === candidate
-                  ? 'bg-surface-raised text-ink shadow-[0_1px_2px_rgba(0,0,0,0.06)]'
-                  : 'text-ink-muted hover:text-ink',
-              )}
-            >
-              {candidate}
-            </button>
-          ))}
-        </nav>
-
         {teams && teams.length > 0 && (
           <label className="flex items-center gap-1.5">
             <span className="sr-only">Team settings</span>
@@ -300,6 +384,21 @@ function TopBar({
           </label>
         )}
         <ModelPicker />
+        <button
+          type="button"
+          onClick={onToggleRight}
+          aria-label={rightOpen ? 'Close documents and artifacts' : 'Open documents and artifacts'}
+          aria-pressed={rightOpen}
+          className={cn(
+            'flex h-8 items-center gap-1.5 rounded-lg px-2 text-sm font-medium transition-colors',
+            rightOpen
+              ? 'bg-accent-soft text-accent-strong'
+              : 'text-ink-muted hover:bg-surface-sunken hover:text-ink',
+          )}
+        >
+          <span aria-hidden="true">▤</span>
+          <span className="hidden sm:inline">Library</span>
+        </button>
         {user && (
           <span
             title={user.email}

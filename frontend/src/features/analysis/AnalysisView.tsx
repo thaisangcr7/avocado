@@ -3,30 +3,25 @@
  *
  * The generated program is shown, not hidden. That is the whole point of the
  * feature: a computed answer you can check beats a plausible answer you
- * cannot. The code, the result and the chart are all part of one artifact.
+ * cannot. The result is rendered as a dashboard-style artifact.
  */
 
-import { useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 
 import { ApiError } from '@/api/client'
-import { analysisApi } from '@/api/endpoints'
-import type { AnalysisRun, AnalysisTable, DocumentDetail } from '@/api/types'
+import type { AnalysisRun, DocumentDetail } from '@/api/types'
 import { Badge, Button, Card, EmptyState, ErrorNotice, Spinner } from '@/components/ui/primitives'
+import { AnalysisArtifact } from '@/features/analysis/AnalysisArtifact'
 import { useAnalysisRuns, useDocument, useRunAnalysis } from '@/hooks/queries'
 import { cn, formatRelativeTime } from '@/lib/utils'
 
-const EXAMPLE_QUESTIONS = [
-  'What is the total by category?',
-  'Show the month-over-month trend',
-  'Which rows are outliers?',
-  'Summarise the distribution of the numeric columns',
-]
-
 export function AnalysisView({
   documentId,
+  initialRun,
   onClose,
 }: {
   documentId: string
+  initialRun?: AnalysisRun | null
   onClose: () => void
 }) {
   const { data: document, isLoading } = useDocument(documentId)
@@ -35,8 +30,17 @@ export function AnalysisView({
 
   const [question, setQuestion] = useState('')
   const [tableId, setTableId] = useState<string | undefined>(undefined)
-  const [activeRun, setActiveRun] = useState<AnalysisRun | null>(null)
+  const [activeRun, setActiveRun] = useState<AnalysisRun | null>(initialRun ?? null)
   const [error, setError] = useState<string | null>(null)
+
+  const exampleQuestions = useMemo(
+    () => buildExampleQuestions(document ?? null, tableId),
+    [document, tableId],
+  )
+
+  useEffect(() => {
+    setActiveRun(initialRun ?? null)
+  }, [documentId, initialRun])
 
   async function handleRun() {
     const text = question.trim()
@@ -64,10 +68,15 @@ export function AnalysisView({
 
   return (
     <div className="flex h-full flex-col overflow-y-auto">
-      <header className="flex items-start justify-between gap-4 border-b border-border-subtle px-6 py-4">
+      <header className="flex items-start justify-between gap-4 border-b border-border-subtle/80 px-6 py-5">
         <div className="min-w-0">
-          <h2 className="truncate text-lg font-semibold text-ink">{document.filename}</h2>
-          <p className="mt-0.5 text-sm text-ink-muted">
+          <p className="text-[11px] font-semibold uppercase tracking-wide text-accent-strong">
+            Analysis
+          </p>
+          <h2 className="mt-1 truncate font-display text-xl font-semibold tracking-tight text-ink">
+            {document.filename}
+          </h2>
+          <p className="mt-1 text-sm text-ink-muted">
             Ask a question and Avocado will write and run the code to answer it.
           </p>
         </div>
@@ -82,11 +91,11 @@ export function AnalysisView({
         <Card className="p-4">
           {tables.length > 1 && (
             <label className="mb-3 block">
-              <span className="mb-1.5 block text-sm font-medium text-ink">Sheet</span>
+              <span className="mb-1.5 block text-sm font-medium text-ink">Table</span>
               <select
-                value={tableId ?? tables[0]?.id}
-                onChange={(e) => setTableId(e.target.value)}
-                className="h-9 w-full rounded-lg border border-border-subtle bg-surface px-2 text-sm text-ink"
+                value={tableId ?? tables[0]?.id ?? ''}
+                onChange={(e) => setTableId(e.target.value || undefined)}
+                className="h-9 w-full rounded-lg border border-border-subtle bg-surface px-2 text-sm"
               >
                 {tables.map((table) => (
                   <option key={table.id} value={table.id}>
@@ -106,13 +115,15 @@ export function AnalysisView({
                 if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) void handleRun()
               }}
               rows={2}
-              placeholder="What is total revenue by region?"
+              placeholder={
+                exampleQuestions[0] ?? 'What is total revenue by region?'
+              }
               className="w-full resize-y rounded-lg border border-border-subtle bg-surface px-3 py-2 text-sm text-ink placeholder:text-ink-muted/70 focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/20"
             />
           </label>
 
           <div className="mt-2 flex flex-wrap gap-1.5">
-            {EXAMPLE_QUESTIONS.map((example) => (
+            {exampleQuestions.map((example) => (
               <button
                 key={example}
                 onClick={() => setQuestion(example)}
@@ -143,7 +154,7 @@ export function AnalysisView({
           </div>
         </Card>
 
-        {activeRun && <RunResult run={activeRun} />}
+        {activeRun && <AnalysisArtifact run={activeRun} />}
 
         {(history?.length ?? 0) > 0 && (
           <section>
@@ -182,6 +193,51 @@ export function AnalysisView({
   )
 }
 
+function buildExampleQuestions(
+  document: DocumentDetail | null,
+  tableId: string | undefined,
+): string[] {
+  const tables = document?.tables ?? []
+  const table =
+    tables.find((candidate) => candidate.id === tableId) ?? tables[0] ?? null
+  if (!table) {
+    return [
+      'What is the total by category?',
+      'Show the month-over-month trend',
+      'Which rows are outliers?',
+    ]
+  }
+
+  const columns = table.columns.map((column) => column.name)
+  const numeric = table.columns.filter((column) =>
+    /int|float|double|number|decimal/i.test(column.dtype),
+  )
+  const categorical = table.columns.filter(
+    (column) => !/int|float|double|number|decimal/i.test(column.dtype),
+  )
+  const dateLike = columns.find((name) =>
+    /date|month|year|period|week/i.test(name),
+  )
+  const metric = numeric[0]?.name
+  const group = categorical[0]?.name
+
+  const questions: string[] = []
+  if (metric && group) {
+    questions.push(`What is the total ${metric} by ${group}?`)
+  }
+  if (metric && dateLike) {
+    questions.push(`Show the ${metric} trend over ${dateLike}`)
+  }
+  if (metric) {
+    questions.push(`Which rows have the highest ${metric}?`)
+    questions.push(`Summarise the distribution of ${metric}`)
+  }
+  if (!questions.length) {
+    questions.push(`Summarise the key patterns in ${table.name}`)
+  }
+  return questions.slice(0, 4)
+}
+
 function SchemaSummary({ document }: { document: DocumentDetail }) {
   const table = document.tables?.[0]
   if (!table) {
@@ -218,151 +274,5 @@ function SchemaSummary({ document }: { document: DocumentDetail }) {
         ))}
       </div>
     </Card>
-  )
-}
-
-function RunResult({ run }: { run: AnalysisRun }) {
-  const [showCode, setShowCode] = useState(false)
-
-  if (run.status === 'failed') {
-    return (
-      <Card className="border-danger/20 p-4">
-        <div className="mb-2 flex items-center gap-2">
-          <Badge tone="danger">failed</Badge>
-          <span className="text-xs text-ink-muted">
-            {run.attempt_count} attempt{run.attempt_count === 1 ? '' : 's'}
-          </span>
-        </div>
-        <p className="text-sm text-danger">{run.error_message}</p>
-        {run.generated_code && (
-          <CodeBlock code={run.generated_code} label="Code that failed" />
-        )}
-      </Card>
-    )
-  }
-
-  const tables = run.result_data.tables ?? []
-  const stdout = run.result_data.stdout
-
-  return (
-    <Card className="animate-in overflow-hidden">
-      <div className="border-b border-border-subtle bg-surface-sunken/50 px-4 py-3">
-        <div className="flex flex-wrap items-center gap-2">
-          <Badge tone="success">succeeded</Badge>
-          {run.model_used && <Badge tone="neutral">{run.model_used}</Badge>}
-          {run.execution_ms !== null && (
-            <span className="text-xs text-ink-muted">{run.execution_ms}ms</span>
-          )}
-          {run.attempt_count > 1 && (
-            <span className="text-xs text-ink-muted">
-              self-corrected after {run.attempt_count - 1} retry
-            </span>
-          )}
-        </div>
-        <p className="mt-1.5 text-sm text-ink-muted">{run.question}</p>
-      </div>
-
-      <div className="space-y-4 p-4">
-        {run.result_summary && (
-          <p className="text-sm leading-relaxed text-ink">{run.result_summary}</p>
-        )}
-
-        {tables.map((table, index) => (
-          <ResultTable key={index} table={table} />
-        ))}
-
-        {run.chart_url && (
-          <div>
-            <img
-              src={analysisApi.chartUrl(run.id)}
-              alt={`Chart generated for: ${run.question}`}
-              className="max-w-full rounded-lg border border-border-subtle"
-            />
-          </div>
-        )}
-
-        {stdout && stdout.trim() && (
-          <details className="text-xs">
-            <summary className="cursor-pointer font-medium text-ink-muted">
-              Output
-            </summary>
-            <pre className="mt-2 overflow-x-auto rounded-lg bg-surface-sunken p-3 text-ink">
-              {stdout}
-            </pre>
-          </details>
-        )}
-
-        <div>
-          <button
-            onClick={() => setShowCode((current) => !current)}
-            aria-expanded={showCode}
-            className="text-xs font-medium text-accent-strong hover:underline"
-          >
-            {showCode ? 'Hide' : 'Show'} the code that produced this
-          </button>
-          {showCode && run.generated_code && (
-            <>
-              {run.code_explanation && (
-                <p className="mt-2 text-xs text-ink-muted">{run.code_explanation}</p>
-              )}
-              <CodeBlock code={run.generated_code} />
-            </>
-          )}
-        </div>
-      </div>
-    </Card>
-  )
-}
-
-function CodeBlock({ code, label }: { code: string; label?: string }) {
-  return (
-    <div className="mt-2">
-      {label && <p className="mb-1 text-xs font-medium text-ink-muted">{label}</p>}
-      <pre className="overflow-x-auto rounded-lg border border-border-subtle bg-surface-sunken p-3 text-xs leading-relaxed text-ink">
-        <code>{code}</code>
-      </pre>
-    </div>
-  )
-}
-
-function ResultTable({ table }: { table: AnalysisTable }) {
-  return (
-    <div className="overflow-x-auto rounded-lg border border-border-subtle">
-      <table className="w-full text-sm">
-        <thead className="bg-surface-sunken">
-          <tr>
-            {table.columns.map((column) => (
-              <th
-                key={column}
-                scope="col"
-                className="px-3 py-2 text-left text-xs font-semibold text-ink"
-              >
-                {column}
-              </th>
-            ))}
-          </tr>
-        </thead>
-        <tbody>
-          {table.rows.map((row, rowIndex) => (
-            <tr key={rowIndex} className="border-t border-border-subtle">
-              {row.map((cell, cellIndex) => (
-                <td key={cellIndex} className="px-3 py-1.5 text-ink">
-                  {cell === null || cell === undefined ? (
-                    <span className="text-ink-muted/50">—</span>
-                  ) : (
-                    String(cell)
-                  )}
-                </td>
-              ))}
-            </tr>
-          ))}
-        </tbody>
-      </table>
-      {table.truncated && (
-        <p className="border-t border-border-subtle bg-surface-sunken px-3 py-1.5 text-xs text-ink-muted">
-          Showing {table.rows.length} of {table.total_rows.toLocaleString()} rows.
-        </p>
-      )}
-    </div>
   )
 }

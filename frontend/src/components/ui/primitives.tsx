@@ -8,9 +8,9 @@ type ButtonSize = 'sm' | 'md'
 
 const BUTTON_VARIANTS: Record<ButtonVariant, string> = {
   primary:
-    'bg-accent text-white hover:bg-accent-strong disabled:bg-ink-muted/40',
+    'bg-accent text-white shadow-[0_1px_2px_rgba(30,70,40,0.18)] hover:bg-accent-strong hover:shadow-[0_2px_8px_rgba(30,70,40,0.2)] disabled:bg-ink-muted/40 disabled:shadow-none',
   secondary:
-    'bg-surface-raised text-ink border border-border-subtle hover:bg-surface-sunken',
+    'bg-surface-raised text-ink border border-border-subtle shadow-[0_1px_2px_rgba(0,0,0,0.03)] hover:bg-surface-sunken',
   ghost: 'text-ink-muted hover:text-ink hover:bg-surface-sunken',
   danger: 'bg-danger-soft text-danger hover:bg-danger hover:text-white',
 }
@@ -37,8 +37,9 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(function Button
       disabled={disabled || loading}
       aria-busy={loading || undefined}
       className={cn(
-        'inline-flex items-center justify-center gap-2 rounded-lg font-medium',
-        'transition-colors disabled:cursor-not-allowed disabled:opacity-60',
+        'inline-flex items-center justify-center gap-2 rounded-xl font-medium',
+        'transition-[color,background-color,box-shadow,transform] duration-150',
+        'active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-60 disabled:active:scale-100',
         BUTTON_VARIANTS[variant],
         BUTTON_SIZES[size],
         className,
@@ -125,10 +126,9 @@ export function Card({ children, className }: { children: ReactNode; className?:
   return (
     <div
       className={cn(
-        // A hairline shadow, not a drop shadow: enough to lift the card off
-        // the page at a glance without the interface looking decorated.
-        'rounded-xl border border-border-subtle bg-surface-raised',
-        'shadow-[0_1px_2px_rgba(0,0,0,0.04)]',
+        'rounded-2xl border border-border-subtle/80 bg-surface-raised/90',
+        'shadow-[0_1px_2px_rgba(30,50,30,0.04),0_8px_24px_rgba(30,50,30,0.05)]',
+        'backdrop-blur-sm',
         className,
       )}
     >
@@ -149,12 +149,18 @@ export function EmptyState({
   action?: ReactNode
 }) {
   return (
-    <div className="flex flex-col items-center justify-center gap-3 px-6 py-16 text-center">
-      {icon && <div className="text-ink-muted/50">{icon}</div>}
+    <div className="animate-in-slow flex flex-col items-center justify-center gap-4 px-6 py-16 text-center">
+      {icon && (
+        <div className="flex size-14 items-center justify-center rounded-2xl bg-accent-soft text-accent-strong">
+          {icon}
+        </div>
+      )}
       <div>
-        <p className="font-medium text-ink">{title}</p>
+        <p className="font-display text-xl font-semibold tracking-tight text-ink">{title}</p>
         {description && (
-          <p className="mt-1 max-w-sm text-sm text-ink-muted">{description}</p>
+          <p className="mt-2 max-w-sm text-sm leading-relaxed text-ink-muted text-balance">
+            {description}
+          </p>
         )}
       </div>
       {action}

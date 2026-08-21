@@ -329,21 +329,130 @@ def write_csv(rows: list[dict[str, object]], fieldnames: list[str]) -> bytes:
 
 
 def build_revenue_csv(rng: random.Random, rows: int) -> bytes:
+    """A coherent two-year commercial dataset with an explainable story.
+
+    North begins as the largest region but plateaus in year two. East grows
+    fastest after an enterprise launch. West suffers a three-month fulfilment
+    disruption and then recovers. South remains the smallest region. This is
+    intentionally synthetic, but unlike random row-index noise it supports
+    meaningful trend, ranking, target and anomaly questions.
+    """
+
     regions = ["North", "South", "East", "West"]
-    months = [f"2025-{month:02d}" for month in range(1, 7)]
+    segments = ["SMB", "Mid-market", "Enterprise"]
+    products = ["Core", "Analytics", "Automation"]
+    channels = ["Direct", "Partner", "Self-serve"]
+    months = [
+        f"{year}-{month:02d}"
+        for year in (2024, 2025)
+        for month in range(1, 13)
+    ]
+    region_base = {"North": 1.16, "South": 0.82, "East": 0.98, "West": 1.02}
+    segment_factor = {"SMB": 0.72, "Mid-market": 1.0, "Enterprise": 1.48}
+    product_factor = {"Core": 1.0, "Analytics": 1.18, "Automation": 1.34}
+    seasonal = {
+        1: 0.91,
+        2: 0.94,
+        3: 1.0,
+        4: 1.01,
+        5: 1.03,
+        6: 1.06,
+        7: 0.96,
+        8: 0.98,
+        9: 1.04,
+        10: 1.08,
+        11: 1.14,
+        12: 1.22,
+    }
     data = []
     for index in range(rows):
-        revenue = 26000 + (index % 19) * 800 + rng.randint(-1200, 1600)
+        region = regions[index % len(regions)]
+        month_index = (index // len(regions)) % len(months)
+        month = months[month_index]
+        month_number = int(month[-2:])
+        segment = segments[(index // (len(regions) * len(months))) % len(segments)]
+        product = products[(index // 7) % len(products)]
+        channel = channels[(index // 11) % len(channels)]
+
+        market_growth = 1 + 0.009 * month_index
+        region_story = 1.0
+        if region == "East":
+            # Enterprise launch compounds into the clearest growth story.
+            region_story *= 1 + 0.012 * month_index
+            if month_index >= 9 and segment == "Enterprise":
+                region_story *= 1.16
+        elif region == "North" and month_index >= 12:
+            # Largest starting base, but saturation creates a year-two plateau.
+            region_story *= max(0.91, 1 - 0.006 * (month_index - 11))
+        elif region == "West":
+            if 14 <= month_index <= 16:
+                # Fulfilment outage: lower sales and elevated returns.
+                region_story *= 0.72
+            elif month_index >= 17:
+                region_story *= 1.08 + 0.006 * (month_index - 17)
+        elif region == "South" and month_index >= 18:
+            region_story *= 0.94
+
+        baseline = (
+            22500
+            * region_base[region]
+            * segment_factor[segment]
+            * product_factor[product]
+            * seasonal[month_number]
+            * market_growth
+            * region_story
+        )
+        noise = rng.gauss(1.0, 0.055)
+        revenue = max(6000, round(baseline * noise))
+        target_revenue = round(
+            22500
+            * region_base[region]
+            * segment_factor[segment]
+            * product_factor[product]
+            * seasonal[month_number]
+            * (1 + 0.011 * month_index)
+        )
+        average_order_value = {
+            "SMB": 185,
+            "Mid-market": 420,
+            "Enterprise": 970,
+        }[segment] * rng.uniform(0.94, 1.07)
+        orders = max(20, round(revenue / average_order_value))
+        return_rate = 0.018 + rng.uniform(-0.005, 0.008)
+        if product == "Automation":
+            return_rate += 0.006
+        if region == "West" and 14 <= month_index <= 16:
+            return_rate += 0.045
+
         data.append(
             {
-                "month": months[index % len(months)],
-                "region": regions[index % len(regions)],
-                "revenue": max(12000, revenue),
-                "orders": max(100, int(revenue / 175) + rng.randint(-10, 12)),
-                "return_rate": round(rng.uniform(0.01, 0.07), 3),
+                "month": month,
+                "region": region,
+                "segment": segment,
+                "product": product,
+                "channel": channel,
+                "revenue": revenue,
+                "target_revenue": target_revenue,
+                "orders": orders,
+                "avg_order_value": round(revenue / orders, 2),
+                "return_rate": round(max(0.005, return_rate), 3),
             }
         )
-    return write_csv(data, ["month", "region", "revenue", "orders", "return_rate"])
+    return write_csv(
+        data,
+        [
+            "month",
+            "region",
+            "segment",
+            "product",
+            "channel",
+            "revenue",
+            "target_revenue",
+            "orders",
+            "avg_order_value",
+            "return_rate",
+        ],
+    )
 
 
 def build_support_csv(rng: random.Random, rows: int) -> bytes:

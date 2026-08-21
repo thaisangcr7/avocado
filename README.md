@@ -202,6 +202,7 @@ effectively root on their host — and this project's own config refuses to star
 with `SANDBOX_BACKEND=docker` outside development for exactly that reason. So:
 
 - **On a VM you control** (including a free-tier one), everything works.
+  Step-by-step for Oracle Always Free: [`docs/deploy-oracle.md`](docs/deploy-oracle.md).
 - **On a managed platform**, set `SANDBOX_BACKEND=disabled`. Upload, retrieval,
   citations, voice and the knowledge map all work; `/analyze` returns 503
   rather than running code with less isolation than it promises.

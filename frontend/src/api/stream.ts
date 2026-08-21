@@ -11,7 +11,7 @@
  */
 
 import { BASE_URL, tokenStore } from './client'
-import type { Citation } from './types'
+import type { AnalysisRun, Citation } from './types'
 
 export interface StreamSource {
   index: number
@@ -23,6 +23,15 @@ export interface StreamSource {
 export interface StreamHandlers {
   onSources?: (sources: StreamSource[]) => void
   onToken?: (text: string) => void
+  onAnalysisStarted?: (analysis: {
+    document_id: string
+    document_name: string
+  }) => void
+  onAnalysisCompleted?: (analysis: {
+    document_id: string
+    document_name: string
+    run: AnalysisRun
+  }) => void
   onDone?: (result: { model: string; citations: Citation[] }) => void
   onError?: (detail: string) => void
 }
@@ -79,6 +88,20 @@ export async function streamMessage(
         break
       case 'token':
         handlers.onToken?.((data as { text: string }).text)
+        break
+      case 'analysis_started':
+        handlers.onAnalysisStarted?.(
+          data as { document_id: string; document_name: string },
+        )
+        break
+      case 'analysis_completed':
+        handlers.onAnalysisCompleted?.(
+          data as {
+            document_id: string
+            document_name: string
+            run: AnalysisRun
+          },
+        )
         break
       case 'done':
         handlers.onDone?.(data as { model: string; citations: Citation[] })

@@ -1,14 +1,17 @@
 /**
- * The microphone button and its live feedback.
+ * The microphone control and its live feedback.
  *
  * Speaking into a black box is unnerving, so while recording the user sees
  * three things: a waveform proving the mic is being heard, the elapsed time,
- * and the words as they are recognised. Interim text is shown in a lighter
- * weight because it will be revised — presenting it identically to committed
- * text makes the transcript look like it is glitching.
+ * and the words as they are recognised.
+ *
+ * `variant="icon"` is for the chat composer: only the mic control is inlined.
+ * Pass `feedbackHost` so the listening strip can render above the composer
+ * row instead of stretching it.
  */
 
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState, type RefObject } from 'react'
+import { createPortal } from 'react-dom'
 
 import { startDictation, type DictationSession } from '@/api/voice'
 import { Button, Spinner } from '@/components/ui/primitives'
@@ -19,14 +22,20 @@ export function VoiceInput({
   workspaceId,
   onTranscript,
   disabled,
+  variant = 'button',
+  feedbackHost,
 }: {
   workspaceId: string
   /** Called with committed text as it is recognised, to append to the input. */
   onTranscript: (text: string) => void
   disabled?: boolean
+  variant?: 'button' | 'icon'
+  /** When set with `variant="icon"`, listening UI portals here. */
+  feedbackHost?: RefObject<HTMLElement | null>
 }) {
   const [interim, setInterim] = useState('')
   const [streamError, setStreamError] = useState<string | null>(null)
+  const [feedbackReady, setFeedbackReady] = useState(false)
   const sessionRef = useRef<DictationSession | null>(null)
 
   const handleChunk = useCallback((chunk: Blob) => {
@@ -43,13 +52,18 @@ export function VoiceInput({
     setInterim('')
   }, [])
 
-  // A component unmounting mid-dictation must not leave a socket open.
   useEffect(() => {
     return () => {
       sessionRef.current?.close()
       sessionRef.current = null
     }
   }, [])
+
+  // The host ref is often filled after first paint; re-check so the portal
+  // can attach once the slot exists.
+  useEffect(() => {
+    setFeedbackReady(Boolean(feedbackHost?.current))
+  }, [feedbackHost, isRecording])
 
   async function handleStart() {
     setStreamError(null)
@@ -58,8 +72,6 @@ export function VoiceInput({
     sessionRef.current = startDictation(workspaceId, {
       onInterim: setInterim,
       onFinal: (text) => {
-        // Final text supersedes whatever interim was showing; clearing it
-        // first prevents the same words appearing twice for a frame.
         setInterim('')
         if (text.trim()) onTranscript(text.trim())
       },
@@ -78,11 +90,12 @@ export function VoiceInput({
   }
 
   const message = streamError ?? error
+  const busy = disabled || status === 'requesting'
 
-  return (
-    <div className="flex flex-col gap-1.5">
+  const feedback = (
+    <>
       {isRecording && (
-        <div className="flex items-center gap-3 rounded-lg border border-accent/30 bg-accent-soft px-3 py-2">
+        <div className="mb-2 flex items-center gap-3 rounded-xl border border-accent/30 bg-accent-soft px-3 py-2">
           <Waveform levels={levels} />
           <span className="shrink-0 font-mono text-xs tabular-nums text-accent-strong">
             {formatDuration(elapsedMs)}
@@ -92,32 +105,72 @@ export function VoiceInput({
           </p>
         </div>
       )}
-
       {message && (
-        <p role="alert" className="text-xs text-danger">
+        <p role="alert" className="mb-2 text-xs text-danger">
           {message}
         </p>
       )}
+    </>
+  )
 
-      <Button
+  const control =
+    variant === 'icon' ? (
+      <button
         type="button"
-        variant={isRecording ? 'danger' : 'secondary'}
-        size="sm"
-        disabled={disabled || status === 'requesting'}
+        disabled={busy}
         onClick={() => (isRecording ? handleStop() : void handleStart())}
         aria-label={isRecording ? 'Stop dictation' : 'Dictate a question'}
         aria-pressed={isRecording}
-        className="self-start"
+        className={cn(
+          'flex size-9 shrink-0 items-center justify-center rounded-xl transition-colors',
+          'disabled:cursor-not-allowed disabled:opacity-50',
+          isRecording
+            ? 'bg-danger-soft text-danger hover:bg-danger hover:text-white'
+            : 'text-ink-muted hover:bg-surface-sunken hover:text-ink',
+        )}
       >
         {status === 'requesting' ? (
           <Spinner className="size-3.5" />
         ) : (
-          <span aria-hidden="true">{isRecording ? '■' : '🎙'}</span>
+          <span aria-hidden="true" className="text-base leading-none">
+            {isRecording ? '■' : '🎙'}
+          </span>
         )}
-        {isRecording ? 'Stop' : 'Speak'}
-      </Button>
-    </div>
-  )
+      </button>
+    ) : (
+      <div className="flex flex-col gap-1.5">
+        {feedback}
+        <Button
+          type="button"
+          variant={isRecording ? 'danger' : 'secondary'}
+          size="sm"
+          disabled={busy}
+          onClick={() => (isRecording ? handleStop() : void handleStart())}
+          aria-label={isRecording ? 'Stop dictation' : 'Dictate a question'}
+          aria-pressed={isRecording}
+          className="self-start"
+        >
+          {status === 'requesting' ? (
+            <Spinner className="size-3.5" />
+          ) : (
+            <span aria-hidden="true">{isRecording ? '■' : '🎙'}</span>
+          )}
+          {isRecording ? 'Stop' : 'Speak'}
+        </Button>
+      </div>
+    )
+
+  if (variant === 'icon') {
+    const host = feedbackReady ? feedbackHost?.current : null
+    return (
+      <>
+        {host ? createPortal(feedback, host) : null}
+        {control}
+      </>
+    )
+  }
+
+  return control
 }
 
 function Waveform({ levels }: { levels: number[] }) {
@@ -134,8 +187,6 @@ function Waveform({ levels }: { levels: number[] }) {
             'w-[3px] rounded-full bg-accent transition-[height] duration-75',
             level < 0.02 && 'opacity-30',
           )}
-          // A floor keeps the bars visible as a baseline rather than
-          // collapsing the whole waveform to nothing between words.
           style={{ height: `${Math.max(3, level * 24)}px` }}
         />
       ))}

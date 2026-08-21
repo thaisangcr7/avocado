@@ -75,6 +75,72 @@ async def test_a_question_is_answered_by_generated_and_executed_code(
     assert fake_sandbox.executed_code
 
 
+async def test_analysis_persists_only_valid_dashboard_encodings(
+    client, account, fake_llm, fake_sandbox
+):
+    document = await seed_spreadsheet(client, account, fake_llm)
+    fake_llm.responses = [
+        json.dumps(
+            {
+                "code": "result = sales.groupby('region')['revenue'].sum().reset_index()",
+                "explanation": "Group by region and sum revenue.",
+            }
+        ),
+        json.dumps(
+            {
+                "summary": "North leads South by 50.",
+                "metrics": [
+                    {
+                        "label": "Top region",
+                        "value": "North",
+                        "context": "Revenue 250",
+                        "tone": "positive",
+                    }
+                ],
+                "visualizations": [
+                    {
+                        "title": "Revenue by region",
+                        "mark": "bar",
+                        "table_index": 0,
+                        "x": {"field": "region", "type": "nominal"},
+                        "y": {"field": "revenue", "type": "quantitative"},
+                    },
+                    {
+                        "title": "Invented field is rejected",
+                        "mark": "bar",
+                        "table_index": 0,
+                        "x": {"field": "region", "type": "nominal"},
+                        "y": {"field": "profit", "type": "quantitative"},
+                    },
+                ],
+            }
+        ),
+    ]
+
+    response = await client.post(
+        f"/documents/{document['id']}/analyze",
+        json={"question": "What is total revenue by region?"},
+        headers=account["headers"],
+    )
+    assert response.status_code == 201
+
+    run = response.json()
+    presentation = run["result_data"]["presentation"]
+    assert presentation["summary"] == "North leads South by 50."
+    assert presentation["metrics"][0]["label"] == "Top region"
+    assert [chart["title"] for chart in presentation["visualizations"]] == [
+        "Revenue by region"
+    ]
+    presentation_call = next(
+        call
+        for call in fake_llm.calls
+        if "summary" in (call.get("json_schema") or {}).get("properties", {})
+    )
+    schema = presentation_call["json_schema"]
+    assert set(schema["required"]) == set(schema["properties"])
+    assert schema["additionalProperties"] is False
+
+
 async def test_code_that_fails_is_retried_with_the_error(client, account, fake_llm, fake_sandbox):
     """A wrong column name is the common failure and is recoverable."""
     document = await seed_spreadsheet(client, account, fake_llm)

@@ -35,7 +35,7 @@ from app.models.documents import DocumentTable
 from app.models.enums import AnalysisStatus
 from app.repositories.analysis import AnalysisRunRepository
 from app.repositories.documents import DocumentRepository, DocumentTableRepository
-from app.schemas.analysis import AnalysisRunResponse
+from app.schemas.analysis import AnalysisPresentation, AnalysisRunResponse
 from app.services.usage_service import UsageService
 
 log = get_logger(__name__)
@@ -56,6 +56,12 @@ tabular answers, a plain number or string for a single value.
 - Use `print()` for anything that helps explain the result.
 - Only draw a chart with `plt` when the question asks for a trend, comparison, \
 or distribution. Do not call `plt.show()`.
+- A chart must be presentation-ready: choose a chart type that matches the \
+question (line for time, horizontal bar for ranked categories, histogram/box \
+plot for distributions), add a specific title and axis labels, format dense \
+labels legibly, and call `plt.tight_layout()`.
+- Keep chart data in `result` as a tidy DataFrame or Series so the client can \
+also render an interactive dashboard, not only the static plot.
 - Use exactly the column names given in the schema — they are case-sensitive.
 - Handle missing values explicitly rather than letting them propagate silently.
 
@@ -74,10 +80,25 @@ CODE_SCHEMA = {
     "additionalProperties": False,
 }
 
-SUMMARY_PROMPT = """State the answer to the question from these computed results.
+PRESENTATION_PROMPT = """Design a useful analytical dashboard from computed results.
 
-Be direct and lead with the answer. Quote the actual figures. Two or three \
-sentences at most. Do not describe the code or the process."""
+Rules:
+- The computed results are the only evidence. Never invent a number, field, or category.
+- Lead the summary with the direct answer or strongest finding.
+- Quote exact computed figures; never invent a number not present in the results.
+- Add the most decision-useful comparison, driver, high/low, or trend that the \
+results support.
+- State a limitation only when the supplied result is truncated, incomplete, or \
+cannot support part of the question.
+- Use a short paragraph for a simple result. For a multi-part result, use one \
+short lead followed by 2-4 concise Markdown bullets.
+- Metrics must be decision-useful values visible in the supplied results.
+- Create at most three visualizations. Use line/area for time, bar for category \
+comparison, point for relationships, arc only for a small part-to-whole, and \
+boxplot for distributions.
+- Every encoding field must exactly match a column in the selected result table.
+- Prefer one excellent chart over multiple redundant charts.
+- Do not discuss code, methodology, tokens, or the analysis process."""
 
 
 class AnalysisService:
@@ -258,7 +279,15 @@ class AnalysisService:
             }
             if result.chart_png_b64:
                 run.chart_url = await self._store_chart(workspace_id, run.id, result.chart_png_b64)
-            run.result_summary = await self._summarise(question, result, preferred_model, tokens)
+            presentation, presentation_tokens = await self._build_presentation(
+                question, result, preferred_model or provider_model
+            )
+            run.result_summary = presentation.summary
+            run.result_data["presentation"] = presentation.model_dump(mode="json")
+            tokens = (
+                tokens[0] + presentation_tokens[0],
+                tokens[1] + presentation_tokens[1],
+            )
 
         await self._runs.commit()
         await self._usage.record(
@@ -280,28 +309,30 @@ class AnalysisService:
         )
         return AnalysisRunResponse.model_validate(run)
 
-    async def _summarise(
+    async def _build_presentation(
         self,
         question: str,
         result: SandboxResult,
         preferred_model: str | None,
-        tokens: tuple[int, int],
-    ) -> str:
-        """Turn computed output into a sentence a person can read.
+    ) -> tuple[AnalysisPresentation, tuple[int, int]]:
+        """Turn computed evidence into a validated dashboard contract.
 
-        Falls back to the raw stdout if the model call fails — a correct
-        computation should not be lost because the prose step broke.
+        Model output is treated as an untrusted suggestion: Pydantic constrains
+        its shape, then field bindings are checked against the actual result
+        columns. A deterministic presentation keeps the analysis useful when
+        the provider fails or proposes an invalid chart.
         """
         evidence = {
             "stdout": result.stdout[:4000],
-            "tables": result.tables[:1],
+            "tables": result.tables[:3],
             "scalars": result.scalars,
         }
+        fallback = self._fallback_presentation(result)
         try:
             provider, spec = self._router.resolve(
                 task=TaskType.SUMMARIZATION, preferred_model=preferred_model
             )
-            summary = await provider.generate(
+            completion = await provider.generate(
                 messages=[
                     ChatMessage(
                         role="user",
@@ -312,15 +343,155 @@ class AnalysisService:
                     )
                 ],
                 model=spec.id,
-                system=SUMMARY_PROMPT,
-                max_tokens=512,
+                system=PRESENTATION_PROMPT,
+                max_tokens=1200,
+                json_schema=self._strict_json_schema(
+                    AnalysisPresentation.model_json_schema()
+                ),
             )
-            if summary.text.strip():
-                return summary.text.strip()
+            candidate = AnalysisPresentation.model_validate_json(completion.text)
+            validated = self._validate_presentation(candidate, result.tables)
+            return validated, (
+                completion.usage.input_tokens,
+                completion.usage.output_tokens,
+            )
         except Exception:
-            log.debug("analysis_summary_failed", exc_info=True)
+            log.debug("analysis_presentation_failed", exc_info=True)
 
-        return result.stdout.strip()[:1000] or "The analysis completed."
+        return fallback, (0, 0)
+
+    @staticmethod
+    def _strict_json_schema(schema: dict[str, object]) -> dict[str, object]:
+        """Make Pydantic's schema acceptable to strict-output providers.
+
+        OpenAI requires every property to appear in ``required`` and every
+        object to reject extra properties. Nullable/defaulted fields remain
+        nullable, but the model must emit them explicitly.
+        """
+
+        def visit(node: object) -> None:
+            if isinstance(node, dict):
+                properties = node.get("properties")
+                if isinstance(properties, dict):
+                    node["required"] = list(properties)
+                    node["additionalProperties"] = False
+                for value in node.values():
+                    visit(value)
+            elif isinstance(node, list):
+                for value in node:
+                    visit(value)
+
+        visit(schema)
+        return schema
+
+    def _validate_presentation(
+        self,
+        presentation: AnalysisPresentation,
+        tables: list[dict[str, object]],
+    ) -> AnalysisPresentation:
+        valid_visualizations = []
+        for visual in presentation.visualizations:
+            if visual.table_index >= len(tables):
+                continue
+            columns = set(tables[visual.table_index].get("columns", []))
+            encodings = [visual.x, visual.y]
+            if visual.color is not None:
+                encodings.append(visual.color)
+            if all(encoding.field in columns for encoding in encodings):
+                valid_visualizations.append(visual)
+        presentation.visualizations = valid_visualizations
+        return presentation
+
+    def _fallback_presentation(self, result: SandboxResult) -> AnalysisPresentation:
+        summary = result.stdout.strip()[:1000] or "The analysis completed successfully."
+        metrics = [
+            {
+                "label": key.replace("_", " ").title(),
+                "value": str(value),
+            }
+            for key, value in list(result.scalars.items())[:6]
+        ]
+        visualizations: list[dict[str, object]] = []
+
+        for table_index, table in enumerate(result.tables[:3]):
+            columns = [str(column) for column in table.get("columns", [])]
+            rows = table.get("rows", [])
+            if len(columns) < 2 or not isinstance(rows, list) or len(rows) < 2:
+                continue
+
+            numeric_indexes = [
+                index
+                for index in range(len(columns))
+                if self._mostly_numeric(rows, index)
+            ]
+            if not numeric_indexes:
+                continue
+            value_index = numeric_indexes[-1]
+            temporal_index = next(
+                (
+                    index
+                    for index, column in enumerate(columns)
+                    if index != value_index
+                    and any(
+                        token in column.lower()
+                        for token in ("date", "month", "year", "quarter", "week", "period")
+                    )
+                ),
+                None,
+            )
+            category_index = temporal_index
+            if category_index is None:
+                category_index = next(
+                    (index for index in range(len(columns)) if index != value_index),
+                    None,
+                )
+            if category_index is None:
+                continue
+
+            visualizations.append(
+                {
+                    "title": f"{columns[value_index]} by {columns[category_index]}",
+                    "mark": "line" if temporal_index is not None else "bar",
+                    "table_index": table_index,
+                    "x": {
+                        "field": columns[category_index],
+                        "type": "temporal" if temporal_index is not None else "nominal",
+                        "title": columns[category_index],
+                    },
+                    "y": {
+                        "field": columns[value_index],
+                        "type": "quantitative",
+                        "title": columns[value_index],
+                    },
+                    "interactive": True,
+                }
+            )
+
+        return AnalysisPresentation.model_validate(
+            {
+                "summary": summary,
+                "metrics": metrics,
+                "visualizations": visualizations,
+            }
+        )
+
+    @staticmethod
+    def _mostly_numeric(rows: list[object], index: int) -> bool:
+        values = [
+            row[index]
+            for row in rows
+            if isinstance(row, list) and len(row) > index and row[index] not in (None, "")
+        ]
+        if not values:
+            return False
+        numeric = 0
+        for value in values:
+            try:
+                float(value)
+                numeric += 1
+            except (TypeError, ValueError):
+                pass
+        return numeric / len(values) >= 0.8
 
     async def _store_chart(self, workspace_id: uuid.UUID, run_id: uuid.UUID, chart_b64: str) -> str:
         key = build_storage_key(workspace_id, "charts", str(run_id), "chart.png")

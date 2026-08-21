@@ -58,19 +58,34 @@ export function AuthPage() {
   }
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-surface px-4">
-      <div className="w-full max-w-sm">
+    <div className="bg-atmosphere-auth relative flex min-h-screen items-center justify-center overflow-hidden px-4 py-12">
+      <div
+        aria-hidden="true"
+        className="pointer-events-none absolute inset-0 opacity-[0.35]"
+        style={{
+          backgroundImage:
+            'url("data:image/svg+xml,%3Csvg width=\'60\' height=\'60\' viewBox=\'0 0 60 60\' xmlns=\'http://www.w3.org/2000/svg\'%3E%3Cg fill=\'none\' fill-rule=\'evenodd\'%3E%3Cg fill=\'%232d5a3d\' fill-opacity=\'0.06\'%3E%3Cpath d=\'M36 34v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zm0-30V0h-2v4h-4v2h4v4h2V6h4V4h-4zM6 34v-4H4v4H0v2h4v4h2v-4h4v-2H6zM6 4V0H4v4H0v2h4v4h2V6h4V4H6z\'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E")',
+        }}
+      />
+
+      <div className="animate-in-slow relative w-full max-w-md">
         <div className="mb-8 text-center">
-          <div className="mb-3 text-4xl" aria-hidden="true">
+          <div
+            className="mx-auto mb-5 flex size-16 items-center justify-center rounded-3xl bg-accent-soft text-4xl shadow-[0_8px_28px_rgba(40,90,50,0.12)]"
+            aria-hidden="true"
+          >
             🥑
           </div>
-          <h1 className="text-2xl font-semibold text-ink">Avocado</h1>
-          <p className="mt-1 text-sm text-ink-muted">
-            Ask your team&apos;s documents anything.
+          <h1 className="font-display text-4xl font-semibold tracking-tight text-ink">
+            Avocado
+          </h1>
+          <p className="mt-2 text-sm leading-relaxed text-ink-muted text-balance">
+            Your team&apos;s knowledge, ready to answer — with citations, or
+            with real computed analysis.
           </p>
         </div>
 
-        <Card className="p-6">
+        <Card className="p-6 sm:p-7">
           <form onSubmit={handleSubmit} className="space-y-4">
             {isRegister && (
               <>
@@ -128,7 +143,7 @@ export function AuthPage() {
           </form>
         </Card>
 
-        <p className="mt-5 text-center text-sm text-ink-muted">
+        <p className="mt-6 text-center text-sm text-ink-muted">
           {isRegister ? 'Already have an account?' : "Don't have an account?"}{' '}
           <button
             type="button"
@@ -137,7 +152,7 @@ export function AuthPage() {
               setError(null)
               setFieldErrors({})
             }}
-            className="font-medium text-accent-strong hover:underline"
+            className="font-semibold text-accent-strong hover:underline"
           >
             {isRegister ? 'Sign in' : 'Create one'}
           </button>
