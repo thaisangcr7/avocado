@@ -182,6 +182,15 @@ class DocumentTableRepository(WorkspaceScopedRepository[DocumentTable]):
         )
         return list((await self._session.execute(stmt)).scalars().all())
 
+    async def list_for_workspace(self, workspace_id: uuid.UUID) -> list[DocumentTable]:
+        """Every structured table in a workspace, for a cross-dataset report."""
+        stmt = (
+            select(DocumentTable)
+            .where(DocumentTable.workspace_id == workspace_id)
+            .order_by(DocumentTable.document_id, DocumentTable.sheet_index)
+        )
+        return list((await self._session.execute(stmt)).scalars().all())
+
     async def delete_for_document(
         self, document_id: uuid.UUID, workspace_id: uuid.UUID
     ) -> list[str]:

@@ -95,3 +95,75 @@ class AnalysisPresentation(StrictAnalysisModel):
     summary: str = Field(min_length=1, max_length=4000)
     metrics: list[AnalysisMetric] = Field(default_factory=list, max_length=6)
     visualizations: list[AnalysisVisualization] = Field(default_factory=list, max_length=3)
+
+
+ReportStatus = Literal["on_course", "watch", "off_course", "neutral"]
+
+
+class ReportSeries(StrictAnalysisModel):
+    """A computed mini-table that charts and tables bind to.
+
+    Rows are produced by the in-sandbox profiler, never authored by the model,
+    so every value a chart plots traces back to a real computation.
+    """
+
+    key: str = Field(min_length=1, max_length=200)
+    title: str = Field(min_length=1, max_length=200)
+    columns: list[str] = Field(min_length=1, max_length=12)
+    rows: list[list[Any]] = Field(default_factory=list)
+
+
+class ReportChart(StrictAnalysisModel):
+    """A chart binding: the model chooses which computed series to plot and how."""
+
+    title: str = Field(min_length=1, max_length=200)
+    description: str | None = Field(default=None, max_length=500)
+    mark: Literal["bar", "line", "area", "point", "arc", "boxplot"]
+    series_key: str = Field(min_length=1, max_length=200)
+    x: VisualizationEncoding
+    y: VisualizationEncoding
+    color: VisualizationEncoding | None = None
+
+
+class ReportKpi(StrictAnalysisModel):
+    label: str = Field(min_length=1, max_length=80)
+    value: str = Field(min_length=1, max_length=60)
+    context: str | None = Field(default=None, max_length=160)
+    tone: Literal["neutral", "positive", "negative", "warning"] = "neutral"
+
+
+class ReportSection(StrictAnalysisModel):
+    title: str = Field(min_length=1, max_length=120)
+    status: ReportStatus = "neutral"
+    narrative: str = Field(min_length=1, max_length=2000)
+    charts: list[ReportChart] = Field(default_factory=list, max_length=3)
+
+
+class ReportPlan(StrictAnalysisModel):
+    """What the model authors from computed evidence.
+
+    Carries narrative, KPI display, and chart bindings — but no raw data rows.
+    The computed series are attached by the service, so the model cannot invent
+    a number that reaches the report.
+    """
+
+    title: str = Field(min_length=1, max_length=160)
+    thesis: str = Field(min_length=1, max_length=600)
+    heading_status: ReportStatus = "neutral"
+    kpis: list[ReportKpi] = Field(default_factory=list, max_length=6)
+    sections: list[ReportSection] = Field(default_factory=list, max_length=6)
+    limits: list[str] = Field(default_factory=list, max_length=8)
+
+
+class ExecutiveReport(StrictAnalysisModel):
+    """A whole-workspace executive report: model-authored narrative and chart
+    bindings, plus the computed series those charts render."""
+
+    title: str
+    thesis: str
+    heading_status: ReportStatus = "neutral"
+    kpis: list[ReportKpi] = Field(default_factory=list)
+    sections: list[ReportSection] = Field(default_factory=list)
+    series: list[ReportSeries] = Field(default_factory=list)
+    limits: list[str] = Field(default_factory=list)
+    model_used: str | None = None
