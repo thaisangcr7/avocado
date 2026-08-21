@@ -218,9 +218,13 @@ This is the part of the vision that turns Avocado from "a copilot you query" int
 
 ---
 
-## 12. External Data Connectors (Phase 5, later)
+## 12. External Data Connectors (deferred)
 
 Each connector — Google Drive, SharePoint/OneDrive, S3, Confluence — is effectively its own integration project: its own OAuth flow, its own API quirks, its own sync/webhook strategy for keeping content current. Build the connector *interface* early (so `ConnectorService` and the ingestion pipeline don't care where a file came from), but implement only one connector first (Google Drive is the friendliest API to start with) and treat each additional one as separate, scoped work rather than a single "connect to anything" feature.
+
+Current execution decision: connectors are deferred until the first-open UX,
+upload-to-insight flow, and report/dashboard experience are polished to a
+high standard at low/no additional cost.
 
 ---
 
@@ -278,7 +282,25 @@ Each connector — Google Drive, SharePoint/OneDrive, S3, Confluence — is effe
 | **2 — Voice + multi-model** | Deepgram streaming STT, second LLM provider wired in, Auto mode | 2–3 wks |
 | **3 — Multi-tenant** | Org/team/workspace, RBAC, invite flow | 2–3 wks |
 | **4 — Team Mastermind layer** | Policy/process tagging (org knowledge layer), `Project`/`Task` entities, proactive suggestion engine, task resume flow | 3–4 wks |
-| **5 — Connectors + scale** | First external connector (Google Drive), model routing for cost, observability, load test, onboarding-ready polish | ongoing |
+| **5 — UX polish + scale (current)** | First-open onboarding flow, upload progress clarity, report templates, performance polish, load test | ongoing |
+| **6 — External connectors (later)** | First external connector (Google Drive or equivalent) once UX targets are met | later |
+
+### 17.1 Current no-cost execution plan
+
+The near-term objective is to deliver a high-quality first experience without
+new spend on connectors:
+
+1. First-open decision screen: demo workspace or upload own files.
+2. Empty-state chat behavior that explains grounded-answer requirements and offers next actions.
+3. Upload-to-query progress indicators and "ready" status.
+4. Post-ingest suggested prompts plus report/dashboard templates.
+5. Bundle/performance optimization for faster perceived response.
+
+Success criteria for this plan:
+
+- A new user can produce one cited answer and one analysis report in under 5 minutes.
+- Empty workspace behavior is explicit and helpful, never confusing.
+- Demo flow requires zero paid external connector setup.
 
 **Reality check on timing:** Phase 1 is now bigger than before (multimodal + a real analysis engine is more than plain RAG), so it's realistic to treat it as the goal for the pre-leave window rather than something to fully finish — landing image + Excel-analysis + a live cloud deploy by then is a strong, honest milestone on its own.
 

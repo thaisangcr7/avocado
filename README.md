@@ -64,9 +64,48 @@ the number *and* the program that produced it.
 | 2 — Voice + multi-model | Deepgram STT, second provider, Auto mode | ✅ Done |
 | 3 — Multi-tenant | Org/team/workspace, RBAC, invites | ✅ Done |
 | 4 — Team Mastermind | Projects/tasks, suggestions, task resume, knowledge map | ✅ Done |
-| 5 — Connectors + scale | Google Drive, observability, cost routing, load test | Observability, cost routing and a folder connector done; Drive and load test not started |
+| 5 — UX polish + scale | First-open UX, report templates, bundle/perf, load test | In progress |
 
 **412 backend tests, 98 frontend tests**, all green in CI on every push.
+
+## Current plan (no-cost, UX-first)
+
+The current execution plan is intentionally **not connector-first**. We can hit
+the product goal without additional spend by making first-open UX excellent and
+using local/demo data flows already in the project.
+
+### What we are building first
+
+1. **First-open guided experience**
+  - A clear "Start with demo data" path.
+  - A clear "Upload your files" path.
+  - Empty-state chat that explains exactly why grounded answers need data.
+2. **Upload-to-insight flow**
+  - Strong ingest progress and "ready to ask" cues.
+  - Suggested starter questions immediately after ingest.
+3. **Report and dashboard actions**
+  - One-click prompts for executive summary, KPI report, and trend dashboard narrative.
+4. **Performance polish**
+  - Reduce initial bundle cost and speed up perceived first interaction.
+
+### How it will look for a new user
+
+1. User opens Avocado and sees two primary choices:
+  - "Start with demo workspace"
+  - "Upload my files"
+2. If they choose demo:
+  - Workspace opens with seeded documents, suggested questions, and one analysis-ready CSV.
+3. If they upload:
+  - They see file processing status and a "ready" badge when querying is meaningful.
+4. In chat:
+  - If there is no data, the app explains the limitation and offers next actions.
+  - If data is ready, the app suggests concrete questions and report templates.
+
+### Cost stance
+
+- Keep local Docker stack for development.
+- Keep folder sync + demo data as the default ingestion path.
+- Keep paid connectors (for example, Drive) deferred until UX and adoption goals are met.
 
 ---
 
