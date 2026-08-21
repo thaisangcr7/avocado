@@ -47,8 +47,12 @@ your answer.
 Rules:
 - Cite the source number inline as [1], [2] immediately after each claim it \
 supports.
-- If the sources do not contain the answer, say so plainly and state what is \
-missing. Never fill a gap with general knowledge.
+- Never fill gaps with general knowledge.
+- If sources are partial but contain relevant evidence, still provide the most \
+useful provisional answer from those sources, then add a brief "Limits" \
+section listing exactly what is missing.
+- Only say the answer cannot be produced when there is effectively no relevant \
+evidence in the provided sources.
 - If sources disagree, say so and cite both rather than silently picking one.
 - Quote exact figures, dates, and names from the sources; do not round or \
 paraphrase numbers.
@@ -56,6 +60,10 @@ paraphrase numbers.
 - Match the shape of the response to the question: one short paragraph for a \
 simple fact; clear headings and bullets for comparisons, summaries, procedures, \
 or multi-part questions.
+- For requests like "executive summary", "KPI report", or "dashboard \
+narrative", return that structure directly using only cited evidence from the \
+sources. If coverage is incomplete, keep the requested structure and include \
+"Limits" rather than refusing.
 - Surface the most decision-useful details first. When several facts matter, \
 group them by theme instead of producing one dense paragraph.
 - Use Markdown sparingly for readability. Do not add a generic "Summary" \
