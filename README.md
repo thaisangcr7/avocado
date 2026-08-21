@@ -1,9 +1,21 @@
 # Avocado 🥑
 
+**One-line definition:** Avocado is a workspace-grounded AI copilot for team knowledge and data analysis: it answers with citations from your files and can run sandboxed code to produce real computed reports.
+
 **Team knowledge & analysis copilot.** Upload documents, spreadsheets and images
 into a workspace, then ask questions and get answers that are either *cited* —
 grounded in the actual text, with the source shown — or *computed*, by writing
 and running real code against your data in an isolated sandbox.
+
+## 30-second pitch
+
+Most AI chat tools paraphrase text they retrieve. Avocado goes one step further:
+it combines grounded retrieval with a safe analysis runtime. For document
+questions, it returns cited answers tied to workspace sources. For spreadsheet
+questions, it writes and executes analysis code in a locked-down sandbox and
+returns the computed result, plus the program that produced it. The result is a
+team copilot that is both explainable (citations) and verifiable (computed
+outputs).
 
 The distinction matters. Most "chat with your documents" tools retrieve a
 paragraph and paraphrase it. Avocado does that too, but when the question is
