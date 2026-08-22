@@ -19,8 +19,8 @@ Plan and estimates: [`workspaces-parity.md`](workspaces-parity.md).
 | A3 · Service + resource schemas | ✅ done |
 | A4 · Endpoints | ✅ done |
 | A5 · Model emits artifacts | ⬜ not started |
-| A6 · Frontend panel (sandboxed iframe) | ⬜ not started |
-| A7 · Version history UI | ⬜ not started |
+| A6 · Frontend panel (sandboxed iframe) | ✅ done |
+| A7 · Version history UI | ✅ done |
 
 ---
 
@@ -67,5 +67,6 @@ Recorded so they are not relitigated in a later session.
 
 Newest first. One line per shipped increment.
 
+- **A6–A7** · `ArtifactFrame` renders model HTML in a null-origin sandboxed iframe with a `default-src 'none'` policy; `ArtifactPanel` adds the version picker, source toggle and download. Six tests assert the sandbox, verified by confirming they fail when `allow-same-origin` is added.
 - **A2–A4** · Repository, service, resources and four endpoints. Listing returns the newest version of each artifact, not every version. HTML downloads as an attachment with `nosniff`, never as `text/html`. 19 tests including cross-tenant reads, writes and the database policy.
 - **A1** · `artifacts` table, enums, migration `0011` with its RLS policy. Versions are rows sharing a `lineage_id`, not a mutable column.

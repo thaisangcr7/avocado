@@ -15,6 +15,7 @@ import {
 
 import {
   analysisApi,
+  artifactApi,
   authApi,
   conversationApi,
   documentApi,
@@ -49,6 +50,9 @@ export const queryKeys = {
   conversations: (workspaceId: string) => ['conversations', workspaceId] as const,
   messages: (conversationId: string) => ['messages', conversationId] as const,
   analysisRuns: (documentId: string) => ['analysis-runs', documentId] as const,
+  artifacts: (workspaceId: string, conversationId?: string) =>
+    ['artifacts', workspaceId, conversationId ?? 'all'] as const,
+  artifact: (id: string) => ['artifact', id] as const,
   organization: ['organization'] as const,
   orgMembers: ['organization', 'members'] as const,
   teams: ['teams'] as const,
@@ -221,6 +225,37 @@ export function useAnalysisRuns(documentId: string | null) {
     queryKey: queryKeys.analysisRuns(documentId ?? ''),
     queryFn: () => analysisApi.listForDocument(documentId!),
     enabled: Boolean(documentId),
+  })
+}
+
+export function useArtifacts(workspaceId: string | null, conversationId?: string) {
+  return useQuery({
+    queryKey: queryKeys.artifacts(workspaceId ?? '', conversationId),
+    queryFn: () => artifactApi.list(workspaceId!, conversationId),
+    enabled: Boolean(workspaceId),
+  })
+}
+
+export function useArtifact(workspaceId: string | null, artifactId: string | null) {
+  return useQuery({
+    queryKey: queryKeys.artifact(artifactId ?? ''),
+    queryFn: () => artifactApi.get(workspaceId!, artifactId!),
+    enabled: Boolean(workspaceId && artifactId),
+  })
+}
+
+export function useReviseArtifact(workspaceId: string) {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: ({ artifactId, content, title }: {
+      artifactId: string
+      content: string
+      title?: string
+    }) => artifactApi.revise(workspaceId, artifactId, { content, title }),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['artifacts'] })
+      void queryClient.invalidateQueries({ queryKey: ['artifact'] })
+    },
   })
 }
 

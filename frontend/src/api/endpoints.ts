@@ -2,6 +2,9 @@
 
 import { http, tokenStore, BASE_URL } from './client'
 import type {
+  Artifact,
+  ArtifactDetail,
+  ArtifactKind,
   AnalysisRun,
   Invitation,
   InvitationCreated,
@@ -144,6 +147,42 @@ export const analysisApi = {
   chartUrl: (runId: string) => `${BASE_URL}/analysis-runs/${runId}/chart`,
 
   fetchChart: (runId: string) => http.get<Blob>(`/analysis-runs/${runId}/chart`),
+}
+
+export const artifactApi = {
+  list: (workspaceId: string, conversationId?: string) =>
+    http.get<Artifact[]>(
+      `/workspaces/${workspaceId}/artifacts` +
+        (conversationId ? `?conversation_id=${conversationId}` : ''),
+    ),
+
+  get: (workspaceId: string, artifactId: string) =>
+    http.get<ArtifactDetail>(`/workspaces/${workspaceId}/artifacts/${artifactId}`),
+
+  create: (
+    workspaceId: string,
+    payload: {
+      title: string
+      filename: string
+      kind: ArtifactKind
+      content: string
+      conversation_id?: string
+    },
+  ) => http.post<Artifact>(`/workspaces/${workspaceId}/artifacts`, payload),
+
+  revise: (
+    workspaceId: string,
+    artifactId: string,
+    payload: { content: string; title?: string },
+  ) =>
+    http.post<Artifact>(
+      `/workspaces/${workspaceId}/artifacts/${artifactId}/versions`,
+      payload,
+    ),
+
+  /** Served through the API so access stays behind the same check. */
+  downloadUrl: (workspaceId: string, artifactId: string) =>
+    `${BASE_URL}/workspaces/${workspaceId}/artifacts/${artifactId}/download`,
 }
 
 export const teamApi = {

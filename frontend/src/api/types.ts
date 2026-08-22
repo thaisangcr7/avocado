@@ -190,6 +190,38 @@ export interface AnalysisPresentation {
   visualizations: AnalysisVisualization[]
 }
 
+export type ArtifactKind = 'html' | 'markdown' | 'code' | 'chart' | 'table'
+export type ArtifactAuthor = 'ai' | 'user'
+
+export interface ArtifactVersion {
+  id: string
+  version: number
+  author: ArtifactAuthor
+  model_used: string | null
+  created_at: string
+}
+
+export interface Artifact {
+  id: string
+  workspace_id: string
+  conversation_id: string | null
+  /** Shared by every version of one artifact. */
+  lineage_id: string
+  version: number
+  kind: ArtifactKind
+  author: ArtifactAuthor
+  title: string
+  filename: string
+  content: string | null
+  model_used: string | null
+  created_at: string
+  updated_at: string
+}
+
+export interface ArtifactDetail extends Artifact {
+  versions: ArtifactVersion[]
+}
+
 export interface AnalysisRun {
   id: string
   workspace_id: string
