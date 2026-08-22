@@ -21,10 +21,12 @@ import {
   useDocuments,
   useMessages,
   useModels,
+  useTools,
   useUploadDocument,
   useVoiceCapabilities,
 } from '@/hooks/queries'
 import { ContextGauge } from '@/features/chat/ContextGauge'
+import { ToolsModal } from '@/features/tools/ToolsModal'
 import { SuggestionsBar } from '@/features/tasks/SuggestionsBar'
 import { VoiceInput } from '@/features/voice/VoiceInput'
 import { cn } from '@/lib/utils'
@@ -67,6 +69,7 @@ export function ChatView({
   const [isStreaming, setIsStreaming] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [uploadError, setUploadError] = useState<string | null>(null)
+  const [toolsOpen, setToolsOpen] = useState(false)
 
   const bottomRef = useRef<HTMLDivElement>(null)
   const abortRef = useRef<AbortController | null>(null)
@@ -309,6 +312,14 @@ export function ChatView({
               )}
             />
 
+            {conversationId && (
+              <ToolsButton
+                workspaceId={workspaceId}
+                conversationId={conversationId}
+                onOpen={() => setToolsOpen(true)}
+              />
+            )}
+
             {voice?.live_transcription && (
               <VoiceInput
                 workspaceId={workspaceId}
@@ -345,6 +356,14 @@ export function ChatView({
           />
         </div>
       </div>
+
+      {toolsOpen && conversationId && (
+        <ToolsModal
+          workspaceId={workspaceId}
+          conversationId={conversationId}
+          onClose={() => setToolsOpen(false)}
+        />
+      )}
     </div>
   )
 }
@@ -580,6 +599,42 @@ function StartHere({
  * than injected as HTML, so document text reaching this component through a
  * model response can never become markup.
  */
+/**
+ * Opens the tool picker, carrying the active count.
+ *
+ * The badge is the whole point of putting it here: enabled tools are spent
+ * context on every message, so how many are on belongs next to the box where
+ * messages are written, not buried in a settings screen.
+ */
+function ToolsButton({
+  workspaceId,
+  conversationId,
+  onOpen,
+}: {
+  workspaceId: string
+  conversationId: string
+  onOpen: () => void
+}) {
+  const { data: selection } = useTools(workspaceId, conversationId)
+  const count = selection?.enabled_count ?? 0
+
+  return (
+    <button
+      type="button"
+      onClick={onOpen}
+      title="Tools and integrations"
+      className="mb-1 flex shrink-0 items-center gap-1.5 self-end rounded-lg px-2 py-1.5 text-xs text-ink-muted transition-colors hover:bg-surface-sunken hover:text-ink"
+    >
+      <span>Tools</span>
+      {count > 0 && (
+        <span className="rounded-full bg-accent px-1.5 py-px text-[10px] font-medium text-white">
+          {count}
+        </span>
+      )}
+    </button>
+  )
+}
+
 function AnswerBody({ content }: { content: string }) {
   return (
     <div className="space-y-3 text-[15px] leading-7 text-ink [&_blockquote]:border-l-2 [&_blockquote]:border-accent/40 [&_blockquote]:pl-4 [&_blockquote]:text-ink-muted [&_h1]:font-display [&_h1]:text-xl [&_h1]:font-semibold [&_h2]:font-display [&_h2]:text-lg [&_h2]:font-semibold [&_h3]:font-semibold [&_li]:ml-5 [&_li]:pl-1 [&_ol]:list-decimal [&_ol]:space-y-1.5 [&_ul]:list-disc [&_ul]:space-y-1.5">

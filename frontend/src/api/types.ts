@@ -190,6 +190,28 @@ export interface AnalysisPresentation {
   visualizations: AnalysisVisualization[]
 }
 
+export type ToolCategory = 'analytics' | 'engineering' | 'knowledge' | 'admin' | 'data'
+export type ToolKind = 'builtin' | 'mcp' | 'placeholder'
+
+export interface Tool {
+  slug: string
+  name: string
+  description: string
+  category: ToolCategory
+  kind: ToolKind
+  /** What this tool's schema adds to every request while it is on. */
+  context_cost_tokens: number
+  enabled: boolean
+  /** False for a tool that is declared but not wired to anything yet. */
+  connected: boolean
+}
+
+export interface ToolSelection {
+  tools: Tool[]
+  enabled_count: number
+  context_cost_tokens: number
+}
+
 export type ArtifactKind = 'html' | 'markdown' | 'code' | 'chart' | 'table'
 export type ArtifactAuthor = 'ai' | 'user'
 

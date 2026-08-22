@@ -36,6 +36,7 @@ import type {
   TokenResponse,
   Workspace,
   WorkspaceStats,
+  ToolSelection,
 } from './types'
 
 export const authApi = {
@@ -183,6 +184,19 @@ export const artifactApi = {
   /** Served through the API so access stays behind the same check. */
   downloadUrl: (workspaceId: string, artifactId: string) =>
     `${BASE_URL}/workspaces/${workspaceId}/artifacts/${artifactId}/download`,
+}
+
+export const toolApi = {
+  list: (workspaceId: string, conversationId: string) =>
+    http.get<ToolSelection>(
+      `/workspaces/${workspaceId}/conversations/${conversationId}/tools`,
+    ),
+
+  setEnabled: (workspaceId: string, conversationId: string, slugs: string[]) =>
+    http.put<ToolSelection>(
+      `/workspaces/${workspaceId}/conversations/${conversationId}/tools`,
+      { slugs },
+    ),
 }
 
 export const teamApi = {

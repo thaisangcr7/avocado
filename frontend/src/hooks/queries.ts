@@ -16,6 +16,7 @@ import {
 import {
   analysisApi,
   artifactApi,
+  toolApi,
   authApi,
   conversationApi,
   documentApi,
@@ -53,6 +54,7 @@ export const queryKeys = {
   artifacts: (workspaceId: string, conversationId?: string) =>
     ['artifacts', workspaceId, conversationId ?? 'all'] as const,
   artifact: (id: string) => ['artifact', id] as const,
+  tools: (conversationId: string) => ['tools', conversationId] as const,
   organization: ['organization'] as const,
   orgMembers: ['organization', 'members'] as const,
   teams: ['teams'] as const,
@@ -255,6 +257,24 @@ export function useReviseArtifact(workspaceId: string) {
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ['artifacts'] })
       void queryClient.invalidateQueries({ queryKey: ['artifact'] })
+    },
+  })
+}
+
+export function useTools(workspaceId: string | null, conversationId: string | null) {
+  return useQuery({
+    queryKey: queryKeys.tools(conversationId ?? ''),
+    queryFn: () => toolApi.list(workspaceId!, conversationId!),
+    enabled: Boolean(workspaceId && conversationId),
+  })
+}
+
+export function useSetTools(workspaceId: string, conversationId: string) {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (slugs: string[]) => toolApi.setEnabled(workspaceId, conversationId, slugs),
+    onSuccess: (selection) => {
+      queryClient.setQueryData(queryKeys.tools(conversationId), selection)
     },
   })
 }
