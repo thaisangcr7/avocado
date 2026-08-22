@@ -43,6 +43,14 @@ class Usage:
 
 
 @dataclass(slots=True)
+class WebSource:
+    """A page the model consulted through a server-side search."""
+
+    title: str
+    url: str
+
+
+@dataclass(slots=True)
 class CompletionResult:
     text: str
     model: str
@@ -50,6 +58,11 @@ class CompletionResult:
     stop_reason: str | None = None
     latency_ms: int = 0
     raw: dict[str, Any] | None = None
+    # Pages a server-side search actually returned. Kept separate from the
+    # document citations a workspace answer carries: one is the team's own
+    # material, the other is the open web, and a reader has to be able to tell
+    # which a claim rests on.
+    web_sources: list[WebSource] = field(default_factory=list)
 
 
 @dataclass(slots=True)
@@ -106,8 +119,14 @@ class LLMProvider(abc.ABC):
         system: str | None = None,
         max_tokens: int = 4096,
         json_schema: dict[str, Any] | None = None,
+        server_tools: list[str] | None = None,
     ) -> CompletionResult:
-        """Single-shot completion. `json_schema` constrains the output shape."""
+        """Single-shot completion.
+
+        `json_schema` constrains the output shape. `server_tools` names
+        provider-hosted tools to offer — a provider that has none simply
+        ignores them, so a caller never has to ask who it is talking to.
+        """
 
     @abc.abstractmethod
     def stream(

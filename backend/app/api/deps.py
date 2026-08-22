@@ -469,11 +469,13 @@ def get_chat_service(
     embeddings: EmbeddingsDep,
     router: RouterDep,
     usage: UsageServiceDep,
+    tools: ConversationToolsDep,
 ) -> ChatService:
     return ChatService(
         conversations=conversations,
         messages=messages,
         documents=documents,
+        tools=tools,
         rag=RAGService(chunks=chunks, embeddings=embeddings, router=router),
         analysis=AnalysisService(
             runs=runs,

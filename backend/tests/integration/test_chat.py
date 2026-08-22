@@ -514,3 +514,48 @@ async def test_a_workspace_report_is_streamed_and_persisted(
     )
     assistant = messages.json()[1]
     assert assistant["report_artifact"]["title"] == "Northwind HQ Executive Briefing"
+
+
+async def test_web_search_is_offered_only_when_switched_on(client, account, fake_llm):
+    """The tool picker and the answer path have to agree, or a switch a user
+    looked at does nothing."""
+    conversation_id = await new_conversation(client, account)
+    path = f"/workspaces/{account['workspace_id']}/conversations/{conversation_id}/tools"
+
+    fake_llm.responses = ["Nothing here covers that."]
+    await client.post(
+        f"/workspaces/{account['workspace_id']}/conversations/{conversation_id}/messages",
+        json={"content": "What happened in the news today?"},
+        headers=account["headers"],
+    )
+    assert fake_llm.calls[-1]["server_tools"] == [], "off by default, so nothing is offered"
+
+    await client.put(path, json={"slugs": ["web-search"]}, headers=account["headers"])
+    fake_llm.responses = ["From the web: something happened."]
+    await client.post(
+        f"/workspaces/{account['workspace_id']}/conversations/{conversation_id}/messages",
+        json={"content": "What happened in the news today?"},
+        headers=account["headers"],
+    )
+    assert fake_llm.calls[-1]["server_tools"] == ["web_search"]
+
+
+async def test_web_search_is_told_to_separate_the_web_from_the_documents(client, account, fake_llm):
+    """A reader has to be able to tell which a claim rests on; the only thing
+    carrying that distinction is the instruction the model was given."""
+    conversation_id = await new_conversation(client, account)
+    await client.put(
+        f"/workspaces/{account['workspace_id']}/conversations/{conversation_id}/tools",
+        json={"slugs": ["web-search"]},
+        headers=account["headers"],
+    )
+
+    fake_llm.responses = ["From the web."]
+    await client.post(
+        f"/workspaces/{account['workspace_id']}/conversations/{conversation_id}/messages",
+        json={"content": "What is the latest on this?"},
+        headers=account["headers"],
+    )
+    system = fake_llm.calls[-1]["system"]
+    assert "not from their documents" in system
+    assert "rather than answering from memory" in system

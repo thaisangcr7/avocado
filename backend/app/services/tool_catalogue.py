@@ -31,6 +31,11 @@ class ToolDefinition:
     # Measured for the builtins; estimated for placeholders until they are real.
     context_cost_tokens: int
     enabled_by_default: bool = False
+    # Providers that can actually run this tool. Empty means any of them.
+    # Web search is hosted by Anthropic, so a workspace pinned to another
+    # vendor cannot use it — and the registry says so rather than offering a
+    # switch that silently does nothing.
+    providers: tuple[str, ...] = ()
 
 
 BUILTIN_TOOLS: tuple[ToolDefinition, ...] = (
@@ -110,10 +115,14 @@ BUILTIN_TOOLS: tuple[ToolDefinition, ...] = (
     ToolDefinition(
         slug="web-search",
         name="Web search",
-        description="Search the public web and read the pages it finds.",
+        description=(
+            "Search the public web and read the pages it finds. Answers say "
+            "which pages they came from, kept separate from your documents."
+        ),
         category=ToolCategory.DATA,
-        kind=ToolKind.PLACEHOLDER,
+        kind=ToolKind.BUILTIN,
         context_cost_tokens=240,
+        providers=("anthropic",),
     ),
     ToolDefinition(
         slug="market-data",

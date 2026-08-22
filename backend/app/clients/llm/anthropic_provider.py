@@ -25,6 +25,7 @@ from app.clients.llm.base import (
     ModelSpec,
     StreamChunk,
     Usage,
+    WebSource,
 )
 from app.core.errors import ProviderCredentialError, ProviderError
 from app.core.logging import get_logger
@@ -94,6 +95,43 @@ def _to_anthropic_messages(messages: list[ChatMessage]) -> list[dict[str, Any]]:
         blocks.append({"type": "text", "text": m.content})
         out.append({"role": m.role, "content": blocks})
     return out
+
+
+# Anthropic runs these; there is nothing to implement client-side. The
+# _20260209 variants filter results before they reach the context window, and
+# carry their own execution environment — declaring `code_execution` alongside
+# them gives the model two and confuses it.
+SERVER_TOOLS: dict[str, dict[str, Any]] = {
+    "web_search": {"type": "web_search_20260209", "name": "web_search"},
+    "web_fetch": {"type": "web_fetch_20260209", "name": "web_fetch"},
+}
+
+# A paused turn is resumed rather than returned half-finished, but not forever:
+# a tool that keeps pausing would otherwise bill indefinitely.
+_MAX_PAUSE_RESUMES = 4
+
+
+def _web_sources_from(response: Any) -> list[WebSource]:
+    """Pull the pages a search actually returned out of the response.
+
+    A server tool does not raise on failure: the call comes back 200 with an
+    error object where the results would be. On success `content` is a list; on
+    failure it is a single object, so the shape is what has to be checked.
+    """
+    found: list[WebSource] = []
+    for block in getattr(response, "content", []) or []:
+        if getattr(block, "type", None) != "web_search_tool_result":
+            continue
+        content = getattr(block, "content", None)
+        if not isinstance(content, list):
+            code = getattr(content, "error_code", None)
+            log.info("web_search_failed", error_code=code)
+            continue
+        for result in content:
+            url = getattr(result, "url", None)
+            if url:
+                found.append(WebSource(title=getattr(result, "title", "") or url, url=url))
+    return found
 
 
 def _classify(exc: anthropic.APIStatusError, action: str) -> ProviderError:
@@ -169,6 +207,7 @@ class AnthropicProvider(LLMProvider):
         system: str | None = None,
         max_tokens: int = 4096,
         json_schema: dict[str, Any] | None = None,
+        server_tools: list[str] | None = None,
     ) -> CompletionResult:
         kwargs: dict[str, Any] = {
             "model": model,
@@ -182,13 +221,30 @@ class AnthropicProvider(LLMProvider):
                 "format": {"type": "json_schema", "schema": _sanitize_schema(json_schema)}
             }
 
+        tools = [SERVER_TOOLS[name] for name in (server_tools or []) if name in SERVER_TOOLS]
+        if tools:
+            kwargs["tools"] = tools
+
         started = time.perf_counter()
+        history = list(kwargs["messages"])
+        sources: list[WebSource] = []
         try:
-            if max_tokens > _STREAM_THRESHOLD_TOKENS:
-                async with self._client.messages.stream(**kwargs) as stream:
-                    response = await stream.get_final_message()
-            else:
-                response = await self._client.messages.create(**kwargs)
+            for _ in range(_MAX_PAUSE_RESUMES + 1):
+                kwargs["messages"] = history
+                if max_tokens > _STREAM_THRESHOLD_TOKENS:
+                    async with self._client.messages.stream(**kwargs) as stream:
+                        response = await stream.get_final_message()
+                else:
+                    response = await self._client.messages.create(**kwargs)
+
+                sources.extend(_web_sources_from(response))
+                # A server tool that runs long stops the turn with `pause_turn`
+                # rather than an error. Returning here would hand back a
+                # half-finished answer with nothing to say it was cut off, so
+                # the paused turn is appended and the model asked to continue.
+                if response.stop_reason != "pause_turn":
+                    break
+                history = [*history, {"role": "assistant", "content": response.content}]
         except anthropic.APIStatusError as exc:
             log.warning("anthropic_api_error", status=exc.status_code, model=model)
             raise _classify(exc, "request") from exc
@@ -207,6 +263,9 @@ class AnthropicProvider(LLMProvider):
             usage=_usage_from(response.usage),
             stop_reason=response.stop_reason,
             latency_ms=elapsed_ms,
+            # Deduplicated by URL: the model often reads the same page across
+            # several searches within one turn.
+            web_sources=list({source.url: source for source in sources}.values()),
         )
 
     async def stream(

@@ -70,6 +70,7 @@ class FakeLLMProvider(LLMProvider):
         system: str | None = None,
         max_tokens: int = 4096,
         json_schema: dict[str, Any] | None = None,
+        server_tools: list[str] | None = None,
     ) -> CompletionResult:
         self.calls.append(
             {
@@ -78,6 +79,10 @@ class FakeLLMProvider(LLMProvider):
                 "messages": [m.content for m in messages],
                 "json_schema": json_schema,
                 "images": sum(len(m.images) for m in messages),
+                # Recorded so a test can assert which server tools were offered.
+                # A fake that silently drops a new argument makes the caller
+                # look correct while the real provider never receives it.
+                "server_tools": list(server_tools or []),
             }
         )
         text = self._next()

@@ -99,6 +99,20 @@ such a question from general knowledge, and never invent what a document says.
 
 Be brief. No preamble."""
 
+# Used when the workspace has nothing and web search is switched on. The rule
+# that matters is the last one: a reader has to be able to tell a claim that
+# came off the open web from one that came out of their own documents, and the
+# only thing carrying that distinction is the answer itself.
+WEB_PROMPT = """You are Avocado, an assistant for a team's own documents.
+
+Nothing in this workspace matched the question, but you can search the web.
+
+- For a greeting or a question about you, answer briefly and do not search.
+- Otherwise search, then answer from what you find.
+- Name the page each fact came from, with its link, inline as you use it.
+- Say plainly that this came from the web and not from their documents.
+- If the search finds nothing useful, say so rather than answering from memory."""
+
 NO_RESULTS_ANSWER = (
     "I could not find anything in this workspace's documents that answers that. "
     "If you expected a match, the source may still be processing, or it may not "
@@ -152,6 +166,7 @@ class RAGService:
         question: str,
         history: list[Message],
         preferred_model: str | None,
+        web_search: bool = False,
     ) -> tuple[str, list[Citation], str | None, int, int, int]:
         """Reply when retrieval found nothing to ground an answer in.
 
@@ -185,8 +200,9 @@ class RAGService:
             result = await provider.generate(
                 messages=messages,
                 model=spec.id,
-                system=UNGROUNDED_PROMPT,
-                max_tokens=600,
+                system=WEB_PROMPT if web_search else UNGROUNDED_PROMPT,
+                max_tokens=2048 if web_search else 600,
+                server_tools=["web_search"] if web_search else None,
             )
         except ProviderError:
             return (NO_RESULTS_ANSWER, [], None, 0, 0, 0)
@@ -235,6 +251,10 @@ class RAGService:
         history: list[Message],
         preferred_model: str | None,
         document_ids: list[uuid.UUID] | None = None,
+        # Only reaches the no-hits path: a grounded answer's citations mean
+        # "this came from your documents", and mixing the open web into that
+        # list would make the word mean two things at once.
+        web_search: bool = False,
     ) -> tuple[str, list[Citation], str | None, int, int, int]:
         """Answer a question. Returns (text, citations, model, in, out, ms).
 
@@ -247,7 +267,10 @@ class RAGService:
 
         if not hits:
             return await self._answer_ungrounded(
-                question=question, history=history, preferred_model=preferred_model
+                question=question,
+                history=history,
+                preferred_model=preferred_model,
+                web_search=web_search,
             )
 
         provider, spec = self._router.resolve(

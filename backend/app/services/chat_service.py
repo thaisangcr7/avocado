@@ -15,6 +15,7 @@ from app.models.documents import Document
 from app.models.enums import DocumentType, MessageRole
 from app.repositories.conversations import ConversationRepository, MessageRepository
 from app.repositories.documents import DocumentRepository
+from app.repositories.tools import ConversationToolRepository
 from app.schemas.chat import (
     ChatTurnResponse,
     ConversationCreate,
@@ -25,9 +26,12 @@ from app.schemas.chat import (
 from app.services.analysis_service import AnalysisService
 from app.services.rag_service import SYSTEM_PROMPT, RAGService
 from app.services.report_service import ReportService
+from app.services.tool_catalogue import BY_SLUG
 from app.services.usage_service import UsageService
 
 log = get_logger(__name__)
+
+WEB_SEARCH_SLUG = "web-search"
 
 # How many prior messages travel with a turn. Enough for follow-ups ("what
 # about the other region?") without resending an entire thread every time.
@@ -78,10 +82,12 @@ class ChatService:
         report: ReportService,
         router: ModelRouter,
         usage: UsageService,
+        tools: ConversationToolRepository | None = None,
     ) -> None:
         self._conversations = conversations
         self._messages = messages
         self._documents = documents
+        self._tools = tools
         self._rag = rag
         self._analysis = analysis
         self._report = report
@@ -172,6 +178,7 @@ class ChatService:
                 history=history,
                 preferred_model=preferred_model,
                 document_ids=payload.document_ids or None,
+                web_search=await self._web_search_enabled(conversation_id),
             )
         except AvocadoError as exc:
             # The user's turn genuinely happened, so the question stays in the
@@ -217,6 +224,20 @@ class ChatService:
             user_message=MessageResponse.model_validate(user_message),
             assistant_message=MessageResponse.model_validate(assistant_message),
         )
+
+    async def _web_search_enabled(self, conversation_id: uuid.UUID) -> bool:
+        """Whether this conversation has web search switched on.
+
+        Defaults follow the catalogue when nothing has been chosen, the same
+        rule the tool picker shows, so the answer path and the switch a user
+        looked at never disagree.
+        """
+        if self._tools is None:
+            return False
+        choices = await self._tools.choices(conversation_id)
+        if choices:
+            return choices.get(WEB_SEARCH_SLUG, False)
+        return BY_SLUG[WEB_SEARCH_SLUG].enabled_by_default
 
     async def _record_failure(
         self, conversation_id: uuid.UUID, workspace_id: uuid.UUID, detail: str
