@@ -50,6 +50,9 @@ class TaskType(StrEnum):
     VISION_EXTRACTION = "vision_extraction"
     # Correctness-critical: generated code will actually be executed.
     CODE_GENERATION = "code_generation"
+    # Authoring a document someone will read and keep, so it gets the same
+    # tier as code rather than the cheap one used for titling.
+    ARTIFACT = "artifact"
 
 
 class BudgetState(StrEnum):
@@ -83,6 +86,7 @@ _TASK_TIER: dict[TaskType, str] = {
     TaskType.SYNTHESIS: "frontier",
     TaskType.VISION_EXTRACTION: "frontier",
     TaskType.CODE_GENERATION: "frontier",
+    TaskType.ARTIFACT: "frontier",
 }
 
 _TIER_FALLBACK: dict[str, list[str]] = {

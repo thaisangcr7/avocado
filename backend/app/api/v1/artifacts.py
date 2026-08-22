@@ -10,6 +10,7 @@ from fastapi import APIRouter, Query, Response, status
 from app.api.deps import ArtifactServiceDep, WorkspaceContextDep
 from app.models.enums import ArtifactAuthor
 from app.schemas.artifacts import (
+    ArtifactAuthorRequest,
     ArtifactDetailResponse,
     ArtifactForCreate,
     ArtifactForUpdate,
@@ -48,6 +49,27 @@ async def create_artifact(
         payload=payload,
         user_id=context.user.id,
         author=ArtifactAuthor.USER,
+    )
+
+
+@router.post(
+    "/workspaces/{workspace_id}/artifacts/generate",
+    response_model=ArtifactResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+async def generate_artifact(
+    payload: ArtifactAuthorRequest,
+    context: WorkspaceContextDep,
+    service: ArtifactServiceDep,
+) -> ArtifactResponse:
+    """Have the model write a document and keep it as an artifact."""
+    return await service.author(
+        workspace_id=context.workspace.id,
+        instruction=payload.instruction,
+        context=payload.context,
+        conversation_id=payload.conversation_id,
+        user_id=context.user.id,
+        preferred_model=context.preferred_model,
     )
 
 

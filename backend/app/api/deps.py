@@ -267,8 +267,8 @@ def get_membership_service(
 MembershipServiceDep = Annotated[MembershipService, Depends(get_membership_service)]
 
 
-def get_artifact_service(artifacts: ArtifactsDep) -> ArtifactService:
-    return ArtifactService(artifacts=artifacts)
+def get_artifact_service(artifacts: ArtifactsDep, router: RouterDep) -> ArtifactService:
+    return ArtifactService(artifacts=artifacts, router=router)
 
 
 ArtifactServiceDep = Annotated[ArtifactService, Depends(get_artifact_service)]
@@ -497,6 +497,7 @@ def get_analysis_service(
     storage: StorageDep,
     router: RouterDep,
     usage: UsageServiceDep,
+    artifacts: ArtifactServiceDep,
 ) -> AnalysisService:
     return AnalysisService(
         runs=runs,
@@ -507,6 +508,7 @@ def get_analysis_service(
         limits=request.app.state.sandbox_limits,
         router=router,
         usage=usage,
+        artifacts=artifacts,
     )
 
 

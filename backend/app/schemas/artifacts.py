@@ -64,3 +64,13 @@ class ArtifactDetailResponse(ArtifactResponse):
     """One artifact plus the shape of its history, for the version picker."""
 
     versions: list[ArtifactVersionResponse]
+
+
+class ArtifactAuthorRequest(BaseModel):
+    """Ask the model to write a document."""
+
+    instruction: str = Field(min_length=4, max_length=4000)
+    conversation_id: uuid.UUID | None = None
+    # Data the document should be built from, supplied by the caller rather
+    # than retrieved, so what the model was given is explicit.
+    context: str | None = Field(default=None, max_length=100_000)

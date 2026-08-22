@@ -32,10 +32,12 @@ from app.core.errors import NotFoundError, SandboxUnavailableError, ValidationEr
 from app.core.logging import get_logger
 from app.models.analysis import AnalysisRun
 from app.models.documents import DocumentTable
-from app.models.enums import AnalysisStatus
+from app.models.enums import AnalysisStatus, ArtifactAuthor, ArtifactKind
 from app.repositories.analysis import AnalysisRunRepository
 from app.repositories.documents import DocumentRepository, DocumentTableRepository
 from app.schemas.analysis import AnalysisPresentation, AnalysisRunResponse
+from app.schemas.artifacts import ArtifactForCreate
+from app.services.artifact_service import ArtifactService
 from app.services.usage_service import UsageService
 
 log = get_logger(__name__)
@@ -101,6 +103,12 @@ boxplot for distributions.
 - Do not discuss code, methodology, tokens, or the analysis process."""
 
 
+def _artifact_title(question: str) -> str:
+    """A readable name for the program, taken from the question that prompted it."""
+    cleaned = " ".join(question.split())
+    return (cleaned[:77] + "…") if len(cleaned) > 78 else cleaned or "Analysis"
+
+
 class AnalysisService:
     def __init__(
         self,
@@ -113,6 +121,7 @@ class AnalysisService:
         limits: SandboxLimits,
         router: ModelRouter,
         usage: UsageService,
+        artifacts: ArtifactService | None = None,
     ) -> None:
         self._runs = runs
         self._documents = documents
@@ -122,6 +131,10 @@ class AnalysisService:
         self._limits = limits
         self._router = router
         self._usage = usage
+        # Optional so the analysis path still runs anywhere the artifact
+        # service is not wired up; a missing panel entry must never fail a
+        # computation that already succeeded.
+        self._artifacts = artifacts
 
     async def run(
         self,
@@ -290,6 +303,12 @@ class AnalysisService:
             )
 
         await self._runs.commit()
+
+        if run.status is AnalysisStatus.SUCCEEDED:
+            await self._keep_program_as_artifact(
+                run=run, workspace_id=workspace_id, user_id=user_id, question=question
+            )
+
         await self._usage.record(
             org_id=org_id,
             workspace_id=workspace_id,
@@ -488,6 +507,40 @@ class AnalysisService:
             except (TypeError, ValueError):
                 pass
         return numeric / len(values) >= 0.8
+
+    async def _keep_program_as_artifact(
+        self,
+        *,
+        run: AnalysisRun,
+        workspace_id: uuid.UUID,
+        user_id: uuid.UUID,
+        question: str,
+    ) -> None:
+        """Keep the program that produced the answer, as its own artifact.
+
+        The number and the code that computed it are the pair that makes an
+        analysis checkable rather than trusted, and the run row is not where
+        anyone goes looking for it. Best-effort by design: a computation that
+        already succeeded must not fail over a missing panel entry.
+        """
+        if self._artifacts is None or not run.generated_code:
+            return
+
+        try:
+            await self._artifacts.create(
+                workspace_id=workspace_id,
+                payload=ArtifactForCreate(
+                    title=_artifact_title(question),
+                    filename=f"analysis_{run.id.hex[:8]}.py",
+                    kind=ArtifactKind.CODE,
+                    content=run.generated_code,
+                ),
+                user_id=user_id,
+                author=ArtifactAuthor.AI,
+                model_used=run.model_used,
+            )
+        except Exception:
+            log.warning("analysis_artifact_failed", run_id=str(run.id), exc_info=True)
 
     async def _store_chart(self, workspace_id: uuid.UUID, run_id: uuid.UUID, chart_b64: str) -> str:
         key = build_storage_key(workspace_id, "charts", str(run_id), "chart.png")

@@ -351,3 +351,59 @@ async def test_a_question_that_is_too_short_is_rejected(client, account):
         headers=account["headers"],
     )
     assert response.status_code == 422
+
+
+async def test_the_program_is_kept_as_an_artifact(client, account, fake_llm, fake_sandbox):
+    """The number and the code that computed it are what make an analysis
+    checkable rather than trusted, and the run row is not where anyone looks."""
+    document = await seed_spreadsheet(client, account, fake_llm)
+    code = "result = sales.groupby('region')['revenue'].sum().reset_index()"
+    fake_llm.responses = [
+        json.dumps({"code": code, "explanation": "Group and sum."}),
+        "North totals 25,000.",
+    ]
+
+    response = await client.post(
+        f"/documents/{document['id']}/analyze",
+        json={"question": "What is total revenue by region?"},
+        headers=account["headers"],
+    )
+    assert response.status_code == 201
+
+    artifacts = await client.get(
+        f"/workspaces/{account['workspace_id']}/artifacts", headers=account["headers"]
+    )
+    programs = [a for a in artifacts.json() if a["kind"] == "code"]
+    assert len(programs) == 1, "a successful analysis should leave its program behind"
+    assert programs[0]["author"] == "ai"
+    assert programs[0]["filename"].endswith(".py")
+
+    detail = await client.get(
+        f"/workspaces/{account['workspace_id']}/artifacts/{programs[0]['id']}",
+        headers=account["headers"],
+    )
+    assert code in detail.json()["content"]
+
+
+async def test_a_failed_analysis_leaves_no_artifact(client, account, fake_llm, fake_sandbox):
+    """Nothing was computed, so there is no program worth keeping."""
+    document = await seed_spreadsheet(client, account, fake_llm)
+    fake_sandbox.results = [
+        SandboxResult(success=False, error="KeyError: 'nope'", execution_ms=5),
+        SandboxResult(success=False, error="KeyError: 'nope'", execution_ms=5),
+        SandboxResult(success=False, error="KeyError: 'nope'", execution_ms=5),
+    ]
+    fake_llm.responses = [
+        json.dumps({"code": "result = sales['nope']", "explanation": "x"}) for _ in range(4)
+    ]
+
+    await client.post(
+        f"/documents/{document['id']}/analyze",
+        json={"question": "What is total revenue by region?"},
+        headers=account["headers"],
+    )
+
+    artifacts = await client.get(
+        f"/workspaces/{account['workspace_id']}/artifacts", headers=account["headers"]
+    )
+    assert [a for a in artifacts.json() if a["kind"] == "code"] == []

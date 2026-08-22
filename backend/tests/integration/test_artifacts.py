@@ -156,3 +156,60 @@ async def test_artifacts_require_authentication(client, account):
     assert (
         await client.get(f"/workspaces/{account['workspace_id']}/artifacts/{artifact['id']}")
     ).status_code == 401
+
+
+# --- model-authored artifacts ----------------------------------------------
+
+
+DRAFT = {
+    "title": "Q3 revenue dashboard",
+    "filename": "q3-revenue.html",
+    "kind": "html",
+    "content": "<html><body><h1>Q3</h1></body></html>",
+}
+
+
+async def test_the_model_can_author_a_document(client, account, fake_llm):
+    import json
+
+    fake_llm.responses = [json.dumps(DRAFT)]
+    response = await client.post(
+        f"/workspaces/{account['workspace_id']}/artifacts/generate",
+        json={"instruction": "Build a dashboard of Q3 revenue by region."},
+        headers=account["headers"],
+    )
+    assert response.status_code == 201, response.text
+
+    body = response.json()
+    assert body["title"] == DRAFT["title"]
+    assert body["author"] == "ai", "a document the model wrote is not authored by the user"
+    assert body["version"] == 1
+    assert body["model_used"]
+
+
+async def test_generate_is_not_read_as_an_artifact_id(client, account, fake_llm):
+    """`/artifacts/generate` sits under the same prefix as `/artifacts/{id}`.
+
+    Declared the wrong way round, "generate" parses as an id and the route
+    404s instead of generating — a failure that only shows up at runtime.
+    """
+    import json
+
+    fake_llm.responses = [json.dumps(DRAFT)]
+    response = await client.post(
+        f"/workspaces/{account['workspace_id']}/artifacts/generate",
+        json={"instruction": "anything at all"},
+        headers=account["headers"],
+    )
+    assert response.status_code != 404
+
+
+async def test_an_unusable_draft_is_an_error_not_a_silent_pass(client, account, fake_llm):
+    """The user asked for this explicitly, so failure has to be visible."""
+    fake_llm.responses = ["not json at all"]
+    response = await client.post(
+        f"/workspaces/{account['workspace_id']}/artifacts/generate",
+        json={"instruction": "Build something."},
+        headers=account["headers"],
+    )
+    assert response.status_code == 502

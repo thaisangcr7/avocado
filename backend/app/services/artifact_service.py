@@ -7,9 +7,12 @@ ago instead of only its current state.
 
 from __future__ import annotations
 
+import json
 import uuid
 
-from app.core.errors import NotFoundError
+from app.clients.llm.base import ChatMessage
+from app.clients.llm.router import ModelRouter, TaskType
+from app.core.errors import NotFoundError, ProviderError
 from app.core.logging import get_logger
 from app.models.artifacts import Artifact
 from app.models.enums import ArtifactAuthor, ArtifactKind
@@ -24,10 +27,39 @@ from app.schemas.artifacts import (
 
 log = get_logger(__name__)
 
+AUTHOR_PROMPT = """You write self-contained documents a person will read and keep.
+
+For an HTML artifact:
+- One complete file. No external stylesheets, scripts, fonts, or images — it \
+renders with no network access, so anything fetched simply will not appear.
+- Inline the CSS in a <style> block. Inline any script in a <script> block.
+- Use only data supplied in the request. Never invent a figure, name, or date to \
+fill a gap; if something needed is missing, leave the space out rather than \
+guessing at it.
+- Make it legible on a light background at a laptop width.
+
+For markdown or code, return the body only, with no surrounding fence.
+
+The filename must end in the extension matching the kind: .html, .md, or the \
+language's own extension for code."""
+
+AUTHOR_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "title": {"type": "string"},
+        "filename": {"type": "string"},
+        "kind": {"type": "string", "enum": ["html", "markdown", "code"]},
+        "content": {"type": "string"},
+    },
+    "required": ["title", "filename", "kind", "content"],
+    "additionalProperties": False,
+}
+
 
 class ArtifactService:
-    def __init__(self, *, artifacts: ArtifactRepository) -> None:
+    def __init__(self, *, artifacts: ArtifactRepository, router: ModelRouter | None = None) -> None:
         self._artifacts = artifacts
+        self._router = router
 
     async def create(
         self,
@@ -69,6 +101,59 @@ class ArtifactService:
             author=author.value,
         )
         return ArtifactResponse.model_validate(artifact)
+
+    async def author(
+        self,
+        *,
+        workspace_id: uuid.UUID,
+        instruction: str,
+        user_id: uuid.UUID | None,
+        conversation_id: uuid.UUID | None = None,
+        context: str | None = None,
+        preferred_model: str | None = None,
+    ) -> ArtifactResponse:
+        """Have the model write a document, and keep it.
+
+        Raises rather than returning None: the user asked for this one
+        explicitly, so a failure is a failed request, not a missing nicety —
+        unlike the artifact an analysis leaves behind on its way past.
+        """
+        if self._router is None:
+            raise ProviderError("Artifact generation is not configured.")
+
+        provider, spec = self._router.resolve(
+            task=TaskType.ARTIFACT, preferred_model=preferred_model
+        )
+
+        content = instruction if not context else f"{instruction}\n\nUse this data:\n\n{context}"
+        result = await provider.generate(
+            messages=[ChatMessage(role="user", content=content)],
+            model=spec.id,
+            system=AUTHOR_PROMPT,
+            max_tokens=8192,
+            json_schema=AUTHOR_SCHEMA,
+        )
+
+        try:
+            payload = json.loads(result.text)
+            drafted = ArtifactForCreate(
+                title=payload["title"],
+                filename=payload["filename"],
+                kind=ArtifactKind(payload["kind"]),
+                content=payload["content"],
+                conversation_id=conversation_id,
+            )
+        except (json.JSONDecodeError, KeyError, TypeError, ValueError) as exc:
+            log.warning("artifact_author_unusable", exc_info=True)
+            raise ProviderError("The model did not return a usable document.") from exc
+
+        return await self.create(
+            workspace_id=workspace_id,
+            payload=drafted,
+            user_id=user_id,
+            author=ArtifactAuthor.AI,
+            model_used=result.model,
+        )
 
     async def revise(
         self,
