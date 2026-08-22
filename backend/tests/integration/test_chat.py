@@ -130,22 +130,44 @@ async def test_out_of_range_citation_numbers_are_ignored(client, account, fake_l
     assert response.json()["assistant_message"]["citations"] == []
 
 
-async def test_an_empty_workspace_says_so_without_calling_the_model(client, account, fake_llm):
+async def test_a_greeting_is_answered_rather_than_searched_for(client, account, fake_llm):
+    """ "Hello" retrieves nothing, and telling someone their greeting did not
+    match any document is what makes an assistant feel like a search box."""
     conversation_id = await new_conversation(client, account)
-    before = len(fake_llm.calls)
+    fake_llm.responses = ["Hi. Upload a document and I can answer questions about it."]
+
+    response = await client.post(
+        f"/workspaces/{account['workspace_id']}/conversations/{conversation_id}/messages",
+        json={"content": "hello"},
+        headers=account["headers"],
+    )
+    assert response.status_code == 201
+    answer = response.json()["assistant_message"]
+    assert "could not find" not in answer["content"].lower()
+    # Nothing was retrieved, so nothing may be cited whatever the reply says.
+    assert answer["citations"] == []
+
+
+async def test_an_unanswerable_question_still_says_so(client, account, fake_llm):
+    """The friendlier greeting must not cost the honesty guarantee: a question
+    the workspace cannot answer is still refused, not answered from general
+    knowledge."""
+    conversation_id = await new_conversation(client, account)
+    fake_llm.responses = ["Nothing in this workspace covers a remote work policy."]
 
     response = await client.post(
         f"/workspaces/{account['workspace_id']}/conversations/{conversation_id}/messages",
         json={"content": "What is the remote work policy?"},
         headers=account["headers"],
     )
-    assert response.status_code == 201
     answer = response.json()["assistant_message"]
-    assert "could not find" in answer["content"].lower()
     assert answer["citations"] == []
-    # No grounding means no generation call — an ungrounded answer is worse
-    # than an honest miss.
-    assert len(fake_llm.calls) == before
+
+    # The prompt that produced it is the guarantee, so assert the instruction
+    # is actually being sent rather than trusting the fake's scripted reply.
+    system = fake_llm.calls[-1]["system"]
+    assert "Never answer" in system
+    assert "general knowledge" in system
 
 
 async def test_an_empty_workspace_answers_even_with_no_provider_configured(client, account, app):

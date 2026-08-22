@@ -17,11 +17,13 @@ Two decisions worth stating, because both are easy to get subtly wrong:
 from __future__ import annotations
 
 import re
+import time
 import uuid
 
 from app.clients.embeddings.base import EmbeddingProvider
 from app.clients.llm.base import ChatMessage
 from app.clients.llm.router import ModelRouter, TaskType
+from app.core.errors import ProviderError, ValidationError
 from app.core.logging import get_logger
 from app.models.conversations import Message
 from app.models.documents import DocumentChunk
@@ -78,6 +80,25 @@ different source in an earlier turn."""
 
 _CITATION_RE = re.compile(r"\[(\d{1,2})\]")
 
+# Reached only when retrieval found nothing. The message is either not about
+# the documents at all — a greeting, a question about what this thing does — or
+# it is a content question the workspace cannot answer. Those two deserve very
+# different replies, and answering both with "nothing matched" is what makes a
+# greeting feel like talking to a search box.
+UNGROUNDED_PROMPT = """You are Avocado, an assistant that answers questions about \
+a team's own documents.
+
+Nothing in the user's workspace matched their message. Decide which of these it is:
+
+- A greeting, thanks, or small talk — reply briefly and naturally, and say what \
+you can do with their documents.
+- A question about you, your abilities, or how to use this — answer it directly.
+- Anything that would need their documents to answer — say plainly that nothing \
+in this workspace covers it, and suggest what they could upload. Never answer \
+such a question from general knowledge, and never invent what a document says.
+
+Be brief. No preamble."""
+
 NO_RESULTS_ANSWER = (
     "I could not find anything in this workspace's documents that answers that. "
     "If you expected a match, the source may still be processing, or it may not "
@@ -125,6 +146,61 @@ class RAGService:
             parts.append(f"{header}\n{chunk.content}")
         return "\n\n---\n\n".join(parts)
 
+    async def _answer_ungrounded(
+        self,
+        *,
+        question: str,
+        history: list[Message],
+        preferred_model: str | None,
+    ) -> tuple[str, list[Citation], str | None, int, int, int]:
+        """Reply when retrieval found nothing to ground an answer in.
+
+        "Hello" and "what is our refund policy" both retrieve nothing, and only
+        one of them deserves to be told the workspace has no match. The model
+        decides which it is, under a prompt that forbids answering a content
+        question from general knowledge — the honesty guarantee has to survive
+        the friendlier greeting.
+
+        Falls back to the plain no-results line when no provider is configured,
+        so a deployment without a key still answers rather than failing.
+        """
+        try:
+            provider, spec = self._router.resolve(
+                task=TaskType.SUMMARIZATION, preferred_model=preferred_model
+            )
+        except (ProviderError, ValidationError):
+            return (NO_RESULTS_ANSWER, [], None, 0, 0, 0)
+
+        started = time.perf_counter()
+        messages = [
+            ChatMessage(
+                role="user" if m.role is MessageRole.USER else "assistant",
+                content=m.content,
+            )
+            for m in history
+        ]
+        messages.append(ChatMessage(role="user", content=question))
+
+        try:
+            result = await provider.generate(
+                messages=messages,
+                model=spec.id,
+                system=UNGROUNDED_PROMPT,
+                max_tokens=600,
+            )
+        except ProviderError:
+            return (NO_RESULTS_ANSWER, [], None, 0, 0, 0)
+
+        log.info("rag_answered_ungrounded", model=result.model)
+        return (
+            result.text,
+            [],
+            result.model,
+            result.usage.input_tokens,
+            result.usage.output_tokens,
+            int((time.perf_counter() - started) * 1000),
+        )
+
     @staticmethod
     def citations_for(answer: str, hits: list[tuple[DocumentChunk, float, str]]) -> list[Citation]:
         """Return only the sources the answer actually cited.
@@ -170,12 +246,9 @@ class RAGService:
         )
 
         if not hits:
-            # Answered without a model call: there is nothing to ground an
-            # answer in, and asking the model anyway invites an ungrounded one.
-            # Resolving a provider first would make this path fail on a fresh
-            # deployment that has no LLM configured yet — precisely when an
-            # honest "nothing here" is most useful.
-            return (NO_RESULTS_ANSWER, [], None, 0, 0, 0)
+            return await self._answer_ungrounded(
+                question=question, history=history, preferred_model=preferred_model
+            )
 
         provider, spec = self._router.resolve(
             task=TaskType.SYNTHESIS, preferred_model=preferred_model
