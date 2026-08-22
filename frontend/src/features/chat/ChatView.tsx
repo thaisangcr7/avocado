@@ -426,8 +426,8 @@ function StartHere({
 
   if (!ready.length) {
     return (
-      <div className="flex h-full items-center justify-center px-4 py-10 sm:px-6">
-        <div className="animate-in-slow w-full max-w-2xl space-y-6">
+      <div className="flex h-full justify-center overflow-y-auto px-4 py-10 sm:px-6">
+        <div className="animate-in-slow my-auto w-full max-w-2xl space-y-6">
           <div className="space-y-2 text-center">
             <div
               className="mx-auto flex size-14 items-center justify-center rounded-2xl bg-accent-soft text-2xl shadow-[0_6px_20px_rgba(40,90,50,0.1)]"
@@ -567,8 +567,8 @@ function StartHere({
   const limited = openings.slice(0, 6)
 
   return (
-    <div className="flex h-full items-center justify-center px-4 py-10 sm:px-6">
-      <div className="animate-in-slow w-full max-w-lg space-y-7">
+    <div className="flex h-full justify-center overflow-y-auto px-4 py-10 sm:px-6">
+      <div className="animate-in-slow my-auto w-full max-w-lg space-y-7">
         <div className="space-y-3 text-center">
           <div
             className="mx-auto flex size-14 items-center justify-center rounded-2xl bg-accent-soft text-2xl shadow-[0_6px_20px_rgba(40,90,50,0.1)]"

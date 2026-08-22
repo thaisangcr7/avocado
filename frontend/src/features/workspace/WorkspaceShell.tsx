@@ -403,7 +403,7 @@ function TopBar({
 
       <div className="flex min-w-0 items-center gap-2 sm:gap-3">
         {teams && teams.length > 0 && (
-          <label className="flex items-center gap-1.5">
+          <label className="hidden items-center gap-1.5 md:flex">
             <span className="sr-only">Team settings</span>
             <select
               value=""
@@ -468,7 +468,7 @@ function ModelPicker() {
   if (!catalog || !workspace) return null
 
   return (
-    <label className="flex items-center gap-1.5">
+    <label className="hidden items-center gap-1.5 sm:flex">
       <span className="sr-only">Model</span>
       <select
         value={workspace.preferred_model ?? 'auto'}
