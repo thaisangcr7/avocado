@@ -106,6 +106,11 @@ class LLMProvider(abc.ABC):
 
     name: str
 
+    # Server-side tools this vendor hosts. Declared by the adapter rather than
+    # inferred from its name, so asking "can this run a web search" is a
+    # question about capability and not about string-matching a vendor.
+    server_tools: frozenset[str] = frozenset()
+
     @abc.abstractmethod
     def models(self) -> list[ModelSpec]:
         """Models this provider can serve, in preference order."""

@@ -50,6 +50,9 @@ class FakeLLMProvider(LLMProvider):
     """Returns scripted responses and records every call it received."""
 
     name = "fake"
+    # Declared so tests can exercise the server-tool path. The real check is
+    # capability, not vendor, which is exactly what this stands in for.
+    server_tools = frozenset({"web_search", "web_fetch"})
 
     def __init__(self, responses: list[str] | None = None) -> None:
         self.responses = responses or []

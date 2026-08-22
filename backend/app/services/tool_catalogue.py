@@ -31,10 +31,11 @@ class ToolDefinition:
     # Measured for the builtins; estimated for placeholders until they are real.
     context_cost_tokens: int
     enabled_by_default: bool = False
-    # Providers that can actually run this tool. Empty means any of them.
-    # Web search is hosted by Anthropic, so a workspace pinned to another
-    # vendor cannot use it — and the registry says so rather than offering a
+    # The vendor-hosted tool this maps to, when it is one. A provider that
+    # does not host it reports the tool as unavailable rather than offering a
     # switch that silently does nothing.
+    hosted_tool: str | None = None
+    # Vendors known to host it, for the "needs a Claude model" note in the UI.
     providers: tuple[str, ...] = ()
 
 
@@ -122,6 +123,7 @@ BUILTIN_TOOLS: tuple[ToolDefinition, ...] = (
         category=ToolCategory.DATA,
         kind=ToolKind.BUILTIN,
         context_cost_tokens=240,
+        hosted_tool="web_search",
         providers=("anthropic",),
     ),
     ToolDefinition(

@@ -279,8 +279,8 @@ def get_artifact_service(artifacts: ArtifactsDep, router: RouterDep) -> Artifact
 ArtifactServiceDep = Annotated[ArtifactService, Depends(get_artifact_service)]
 
 
-def get_tool_service(selections: ConversationToolsDep) -> ToolService:
-    return ToolService(selections=selections)
+def get_tool_service(selections: ConversationToolsDep, router: RouterDep) -> ToolService:
+    return ToolService(selections=selections, router=router)
 
 
 ToolServiceDep = Annotated[ToolService, Depends(get_tool_service)]

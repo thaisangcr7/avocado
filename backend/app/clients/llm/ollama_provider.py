@@ -84,6 +84,11 @@ class OllamaProvider(LLMProvider):
         system: str | None = None,
         max_tokens: int = 4096,
         json_schema: dict[str, Any] | None = None,
+        # Accepted and ignored: this vendor hosts no server-side tools. The
+        # parameter is part of the interface so a caller never has to know
+        # which provider it reached, and the tool registry is what stops one
+        # being offered where it cannot run.
+        server_tools: list[str] | None = None,
     ) -> CompletionResult:
         payload: dict[str, Any] = {
             "model": model,

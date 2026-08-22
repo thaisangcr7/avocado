@@ -10,12 +10,13 @@ from __future__ import annotations
 
 import uuid
 
-from app.core.errors import NotFoundError, ValidationError
+from app.clients.llm.router import ModelRouter, TaskType
+from app.core.errors import AvocadoError, NotFoundError, ValidationError
 from app.core.logging import get_logger
 from app.models.enums import ToolKind
 from app.repositories.tools import ConversationToolRepository
 from app.schemas.tools import ToolResponse, ToolSelectionResponse
-from app.services.tool_catalogue import BUILTIN_TOOLS, BY_SLUG
+from app.services.tool_catalogue import BUILTIN_TOOLS, BY_SLUG, ToolDefinition
 
 log = get_logger(__name__)
 
@@ -25,9 +26,26 @@ log = get_logger(__name__)
 TOOL_BUDGET_WARN_FRACTION = 0.1
 
 
+def _runnable(tool: ToolDefinition, hosted: frozenset[str]) -> bool:
+    """Whether the answering model's vendor can actually run this tool.
+
+    Web search is hosted by the vendor, so a workspace pinned to one without it
+    would switch the tool on and get nothing. Reporting it as off there is the
+    difference between a control that is unavailable and one that lies.
+
+    The provider declares what it hosts; nothing here matches on a vendor name.
+    """
+    if not tool.hosted_tool:
+        return True
+    return tool.hosted_tool in hosted
+
+
 class ToolService:
-    def __init__(self, *, selections: ConversationToolRepository) -> None:
+    def __init__(
+        self, *, selections: ConversationToolRepository, router: ModelRouter | None = None
+    ) -> None:
         self._selections = selections
+        self._router = router
 
     async def _require_conversation(
         self, conversation_id: uuid.UUID, workspace_id: uuid.UUID
@@ -36,12 +54,33 @@ class ToolService:
         if not await self._selections.belongs_to_workspace(conversation_id, workspace_id):
             raise NotFoundError("Conversation not found.")
 
+    def _hosted_tools(self, preferred_model: str | None) -> frozenset[str]:
+        """Server-side tools the model that would answer right now can run.
+
+        An unresolvable model reports none rather than guessing, so a tool is
+        shown as unavailable instead of promising something unverified.
+        """
+        if self._router is None:
+            return frozenset()
+        try:
+            provider, _ = self._router.resolve(
+                task=TaskType.SYNTHESIS, preferred_model=preferred_model
+            )
+        except AvocadoError:
+            return frozenset()
+        return provider.server_tools
+
     async def catalogue(
-        self, conversation_id: uuid.UUID, workspace_id: uuid.UUID
+        self,
+        conversation_id: uuid.UUID,
+        workspace_id: uuid.UUID,
+        *,
+        preferred_model: str | None = None,
     ) -> ToolSelectionResponse:
         """Every tool, with which are on for this conversation and what they cost."""
         await self._require_conversation(conversation_id, workspace_id)
         choices = await self._selections.choices(conversation_id)
+        hosted = self._hosted_tools(preferred_model)
 
         # No decisions recorded means the defaults are in force. Once anything
         # has been chosen the recorded set is authoritative, including when it
@@ -59,8 +98,9 @@ class ToolService:
                 category=tool.category,
                 kind=tool.kind,
                 context_cost_tokens=tool.context_cost_tokens,
-                enabled=tool.slug in enabled,
+                enabled=tool.slug in enabled and _runnable(tool, hosted),
                 connected=tool.kind is not ToolKind.PLACEHOLDER,
+                runs_on=sorted(tool.providers),
             )
             for tool in BUILTIN_TOOLS
         ]
@@ -77,6 +117,7 @@ class ToolService:
         conversation_id: uuid.UUID,
         workspace_id: uuid.UUID,
         slugs: list[str],
+        preferred_model: str | None = None,
     ) -> ToolSelectionResponse:
         await self._require_conversation(conversation_id, workspace_id)
 
@@ -103,4 +144,4 @@ class ToolService:
         )
         await self._selections.commit()
         log.info("tools_selected", conversation_id=str(conversation_id), count=len(slugs))
-        return await self.catalogue(conversation_id, workspace_id)
+        return await self.catalogue(conversation_id, workspace_id, preferred_model=preferred_model)

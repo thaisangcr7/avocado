@@ -20,6 +20,10 @@ class ToolResponse(ApiModel):
     # shows it and refuses to switch it on, rather than hiding it or letting it
     # fail at call time.
     connected: bool
+    # Vendors that can run it. Empty means any. A tool listed here is reported
+    # as off when the answering model comes from somewhere else, rather than
+    # appearing on and doing nothing.
+    runs_on: list[str] = []
 
 
 class ToolSelectionResponse(ApiModel):

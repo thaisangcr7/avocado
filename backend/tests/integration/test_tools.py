@@ -125,3 +125,36 @@ async def test_tools_do_not_cross_tenants(client):
         path(bob, conversation_id), json={"slugs": ["data-explorer"]}, headers=bob["headers"]
     )
     assert response.status_code == 404
+
+
+async def test_a_tool_the_answering_model_cannot_host_reads_as_off(client, account, app):
+    """Web search runs on the vendor's side. Pinned to a model whose vendor
+    does not host it, the switch would be on and nothing would happen — so it
+    reports off instead. A control that lies is worse than one that is absent.
+    """
+    from app.clients.llm.router import ProviderRegistry
+    from tests.fakes import FakeLLMProvider
+
+    class NoServerTools(FakeLLMProvider):
+        server_tools = frozenset()
+
+    registry = ProviderRegistry(app.state.settings)
+    registry.register(NoServerTools(), make_default=True)
+    original = app.state.registry
+    app.state.registry = registry
+    try:
+        conversation_id = await conversation(client, account)
+        await client.put(
+            path(account, conversation_id),
+            json={"slugs": ["web-search"]},
+            headers=account["headers"],
+        )
+        body = (await client.get(path(account, conversation_id), headers=account["headers"])).json()
+        web = next(t for t in body["tools"] if t["slug"] == "web-search")
+
+        assert web["enabled"] is False, "it cannot run, so it must not read as on"
+        # Still connected and still listed: it is real, just not here.
+        assert web["connected"] is True
+        assert web["runs_on"] == ["anthropic"]
+    finally:
+        app.state.registry = original

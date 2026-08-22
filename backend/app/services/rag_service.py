@@ -196,13 +196,18 @@ class RAGService:
         ]
         messages.append(ChatMessage(role="user", content=question))
 
+        # The registry reports web search as off when the answering vendor
+        # cannot host it, and this is the other half of that: offering the tool
+        # anyway would promise a search that never happens.
+        searching = web_search and "web_search" in provider.server_tools
+
         try:
             result = await provider.generate(
                 messages=messages,
                 model=spec.id,
-                system=WEB_PROMPT if web_search else UNGROUNDED_PROMPT,
-                max_tokens=2048 if web_search else 600,
-                server_tools=["web_search"] if web_search else None,
+                system=WEB_PROMPT if searching else UNGROUNDED_PROMPT,
+                max_tokens=2048 if searching else 600,
+                server_tools=["web_search"] if searching else None,
             )
         except ProviderError:
             return (NO_RESULTS_ANSWER, [], None, 0, 0, 0)

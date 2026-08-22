@@ -22,7 +22,9 @@ async def list_tools(
     service: ToolServiceDep,
 ) -> ToolSelectionResponse:
     """Every tool, which are on for this conversation, and what that costs."""
-    return await service.catalogue(conversation_id, context.workspace.id)
+    return await service.catalogue(
+        conversation_id, context.workspace.id, preferred_model=context.preferred_model
+    )
 
 
 @router.put(
@@ -40,4 +42,5 @@ async def set_tools(
         conversation_id=conversation_id,
         workspace_id=context.workspace.id,
         slugs=payload.slugs,
+        preferred_model=context.preferred_model,
     )

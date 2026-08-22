@@ -190,6 +190,7 @@ def _sanitize_schema(node: Any) -> Any:
 
 class AnthropicProvider(LLMProvider):
     name = "anthropic"
+    server_tools = frozenset(SERVER_TOOLS)
 
     def __init__(self, api_key: str | None, *, timeout: float = 120.0) -> None:
         if not api_key:
