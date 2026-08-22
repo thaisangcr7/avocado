@@ -12,7 +12,7 @@ import json
 
 import pytest
 
-from tests.conftest import register_account
+from tests.conftest import quiesce_llm, register_account
 from tests.integration.test_documents import upload, wait_for_ready
 
 pytestmark = pytest.mark.anyio
@@ -54,6 +54,11 @@ async def seed(client, owner, name="policy.txt", content=POLICY, *, fake_llm=Non
     response = await upload(client, owner, name, content, "text/plain")
     document = await wait_for_ready(client, response.json()["document"]["id"], owner["headers"])
     assert document["status"] == "ready"
+    if fake_llm is not None:
+        # Classification runs after the document is marked ready, so a caller
+        # that stages its own responses next would have this late pass eat the
+        # first one. Readiness is not the condition they actually need.
+        await quiesce_llm(fake_llm)
     return document
 
 
