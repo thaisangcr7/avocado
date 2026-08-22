@@ -1,6 +1,10 @@
 /**
  * The artifact viewer: what the assistant produced, at a chosen version.
  *
+ * Named viewer, not panel: the right rail already has an ArtifactPanel that
+ * predates this feature and shows analysis runs and tasks. Two components with
+ * one name is how a working feature ends up wired to nothing.
+ *
  * Versions are real history, not an undo stack — every one stays retrievable,
  * so the picker can jump back to what a document said three revisions ago.
  */
@@ -15,7 +19,7 @@ import { useArtifact } from '@/hooks/queries'
 import { ArtifactFrame } from './ArtifactFrame'
 import { cn } from '@/lib/utils'
 
-export function ArtifactPanel({
+export function ArtifactViewer({
   workspaceId,
   artifact,
   onClose,

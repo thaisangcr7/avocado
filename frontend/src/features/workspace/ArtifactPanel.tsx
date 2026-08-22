@@ -1,6 +1,11 @@
 /**
- * Right-rail "Artifacts": recent analysis dashboards, knowledge map, and
- * projects/tasks — so the main pane can stay chat.
+ * The right rail: artifacts the assistant produced, recent analysis runs, the
+ * knowledge map, and projects — so the main pane can stay chat.
+ *
+ * The first section is the real artifacts store. What follows it used to be
+ * called "analysis artifacts", which is why the rail was named this; those
+ * are analysis *runs*, and keeping the two apart matters now that artifacts
+ * are a first-class thing with versions of their own.
  */
 
 import { useQueries } from '@tanstack/react-query'
@@ -10,6 +15,7 @@ import { analysisApi } from '@/api/endpoints'
 import type { AnalysisRun, DocumentKind, Project, Task, TaskStatus } from '@/api/types'
 import { DOCUMENT_KIND_LABEL, TASK_STATUS_LABEL, TASK_STATUSES } from '@/api/types'
 import { Badge, Button, EmptyState, Spinner } from '@/components/ui/primitives'
+import { ArtifactsSection } from '@/features/artifacts/ArtifactsSection'
 import {
   queryKeys,
   useCreateProject,
@@ -35,7 +41,19 @@ export function ArtifactPanel({
     <div className="flex h-full flex-col overflow-y-auto">
       <section className="border-b border-border-subtle/80 px-4 py-4">
         <h3 className="font-display text-sm font-semibold tracking-tight text-ink">
-          Analysis artifacts
+          Artifacts
+        </h3>
+        <p className="mt-0.5 text-xs text-ink-muted">
+          Documents and programs the assistant produced here.
+        </p>
+        <div className="mt-3">
+          <ArtifactsSection workspaceId={workspaceId} />
+        </div>
+      </section>
+
+      <section className="border-b border-border-subtle/80 px-4 py-4">
+        <h3 className="font-display text-sm font-semibold tracking-tight text-ink">
+          Analysis runs
         </h3>
         <p className="mt-0.5 text-xs text-ink-muted">
           Computed results from spreadsheets — charts, tables, and code.

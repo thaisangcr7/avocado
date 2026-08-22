@@ -19,7 +19,7 @@ Plan and estimates: [`workspaces-parity.md`](workspaces-parity.md).
 | A3 · Service + resource schemas | ✅ done |
 | A4 · Endpoints | ✅ done |
 | A5 · Model emits artifacts | ✅ done |
-| A6 · Frontend panel (sandboxed iframe) | ✅ done |
+| A6 · Frontend panel (sandboxed iframe) | ✅ done, and reachable |
 | A7 · Version history UI | ✅ done |
 
 ---
@@ -74,6 +74,7 @@ Recorded so they are not relitigated in a later session.
 
 Newest first. One line per shipped increment.
 
+- **A-fix** · The Phase A viewer was built but wired to nothing — no user could open an artifact. Surfaced in the right rail and renamed `ArtifactViewer`, because an unrelated `ArtifactPanel` already held that name. Verified in a browser, not just by tests.
 - **E2 modal** · Search, five category tabs, cards with toggles, Tools button with the active count on the composer, and the cost line stating that enabled tools are spent whether or not they are used. A placeholder's toggle is disabled rather than failing on submit.
 - **E2 backend** · Tool registry with 2 real tools and 9 placeholders, per-conversation choices, and a reported context cost. A placeholder is shown but refuses to be switched on — a tool that silently does nothing would have the model report success it never had.
 - **E3-1** · Context gauge above the composer. No endpoint and no request: messages already record what was sent, and `ModelSpec` already carries the window.
