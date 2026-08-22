@@ -33,6 +33,8 @@ Plan and estimates: [`workspaces-parity.md`](workspaces-parity.md).
 | C — History and conversation management | ⬜ not started |
 | D — Shell and Spaces polish | ⬜ not started |
 | E — Schedules | ⬜ not started |
+| E2 — Tools and integrations (MCP) | ⬜ not started |
+| E3 — Conversation instrumentation | ⬜ not started |
 | F — Collaboration | ⬜ not started |
 | G — Enterprise trim | ⬜ not started |
 
@@ -49,6 +51,11 @@ Recorded so they are not relitigated in a later session.
   in every repository and every RLS policy.
 - **Citations stay.** They are the differentiator; no parity feature is worth
   trading them for.
+- **Tools arrive as MCP, not bespoke connectors.** One protocol adapter, then
+  each integration is a server and a config row. Seventeen hand-written
+  connectors is the wrong shape of work for one person.
+- **Tools are metered.** Each enabled tool spends context whether or not it is
+  called, so the cost is measured, shown, and warned about — never silent.
 
 ---
 

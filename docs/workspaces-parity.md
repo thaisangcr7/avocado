@@ -122,10 +122,65 @@ single conversation. Avocado's workspaces are already close to this.
 
 Recurring/scheduled runs. Not observed in detail — a rail entry exists.
 
-### 1.11 Tools
+### 1.11 Tools and integrations
 
-A toggleable tool set with an active-count badge on the composer. Three tools
-were active in the observed session.
+The largest feature after presets, and a first-class surface rather than a
+settings checkbox.
+
+| Aspect | Detail |
+|---|---|
+| Entry | "Tools" on the composer, carrying a badge with the active count |
+| Modal | "Tools and integrations", full-screen, with its own Done action |
+| Search | Free text across integrations |
+| Categories | All · Analytics · Engineering · General Admin · Financial Data |
+| Card | Icon, name, one-line description, enable toggle |
+| Scale | ~17 integrations observed, scrolling |
+| Cost warning | Footer: enabling too many bloats the context and degrades answer quality, with a link to fuller guidance |
+
+The integrations observed, generalised away from the organisation's own systems:
+
+| Integration | What it does |
+|---|---|
+| Data explorer | Conversationally explore, analyse and visualise spreadsheets |
+| Engineering / product docs | Query technical documentation |
+| Regulatory filings | Fetch public company filings |
+| Issue tracker (two variants) | Issues, projects, sprints, boards, epics |
+| Staff directory | User details and reporting hierarchies |
+| Code intelligence | Explore, search and review code across repositories |
+| Database inventory | Database details for a given system id |
+| Service management | Incidents, change requests, problems, user groups |
+| Application inventory | Search registered software applications |
+| Directory groups | Distribution lists and group memberships |
+| Technology catalogue | Approved software versions |
+| Wiki | Knowledge-base access |
+| Slide generator | Build presentations conversationally |
+| Project tracking | Timesheets, project status, lookups |
+| Internal assistant | Sourced answers on HR, policy, standards |
+| Market data | Permissioned financial data via natural language |
+
+**The important observation is the footer, not the list.** Every enabled tool
+costs context whether or not it is used, and the product says so out loud rather
+than letting quality quietly degrade. That is a design position worth copying:
+tools are metered, not free.
+
+### 1.12 Conversation instrumentation
+
+Details visible on an open thread that did not appear in the first pass:
+
+| Feature | Detail |
+|---|---|
+| **Context budget** | A gauge above the composer reading "Context: 96% left" — how much of the window remains, updated as the thread grows |
+| Prompt enhance | A wand control that rewrites the drafted message before sending |
+| Formatting | A text-format control on the composer |
+| Welcome state | A named greeting explaining what the assistant does and how to start, rather than an empty pane |
+| Timestamps | Per message, both sides |
+| Share | A share control in the conversation header, beside pin |
+| Presence | A green dot on the participant avatar |
+
+The context gauge is the standout. It makes the single most confusing property
+of a long conversation — that quality falls off as the window fills — visible
+before it bites, and it is cheap to build on token counts that are already
+recorded per message.
 
 ---
 
@@ -149,6 +204,9 @@ were active in the observed session.
 | **History page** | ❌ (sidebar list only) | ✅ |
 | **Schedules** | ❌ | ✅ |
 | **@mentions / multi-human threads** | ❌ | ✅ |
+| **Tool / integration registry** | ❌ | ✅ (~17) |
+| **Context-budget gauge** | ❌ | ✅ |
+| Prompt enhance | ❌ | ✅ |
 | Message feedback (thumbs) | ❌ | ✅ |
 | Pin / share / download a conversation | ❌ | ✅ |
 | Theme switcher | ❌ | ✅ |
@@ -290,6 +348,71 @@ the existing notification surface.
 
 *Estimate: 5–8 working days.*
 
+### Phase E2 — Tools and integrations
+
+The registry is the feature; the individual integrations are content. Building
+seventeen bespoke connectors is the wrong shape of work for one person, and the
+industry already settled this: **implement MCP as the tool protocol** and every
+integration becomes a server rather than a branch in Avocado's codebase. A wiki
+connector then costs a config row, not a sprint.
+
+**E2-1. Registry.**
+
+```
+tools
+  id, org_id (null = built in)
+  slug, name, description, category
+  kind          enum: builtin | mcp
+  endpoint      text        -- MCP server URL, null for builtin
+  auth_ref      text        -- name of the secret, never the secret
+  enabled_by_default bool
+  context_cost_tokens int   -- measured, not guessed
+```
+
+Plus `conversation_tools (conversation_id, tool_id)` for per-thread activation.
+
+**E2-2. Two built-ins on day one**, so the registry ships with something real:
+the existing analysis sandbox as a *data explorer* tool, and workspace
+retrieval as a *documents* tool. Both already exist — this exposes them through
+the tool surface rather than as special cases.
+
+**E2-3. MCP client.** One adapter under `clients/tools/`, behind the same
+interface as the built-ins, so a service never knows whether a tool is local or
+remote. Credentials resolve from the environment by `auth_ref`; a tool
+definition never carries a secret.
+
+**E2-4. Metered, not free.** Each tool's schema costs context whether or not it
+is called. The registry stores a measured token cost per tool, the composer
+shows the running total, and the modal warns before the total crosses a share
+of the window. Copy the reference platform's honesty here: say it out loud
+rather than letting answer quality quietly degrade.
+
+**E2-5. Modal.** Search, the five category tabs, cards with toggles, active
+count on the composer badge.
+
+*Estimate: 12–16 working days for the registry, MCP client and modal. Each
+further integration is then hours, not days.*
+
+### Phase E3 — Conversation instrumentation
+
+Small, cheap, and disproportionately reassuring.
+
+**E3-1. Context gauge.** Messages already record `input_tokens`, so the
+remaining window is arithmetic against the model's context length, which
+`ModelSpec.context_window` already carries. Show percentage left above the
+composer; warn as it falls.
+
+**E3-2. Prompt enhance.** A wand that rewrites the draft before sending, via a
+cheap-tier model call. One endpoint, one `TaskType`.
+
+**E3-3. Welcome state.** A greeting that says what the assistant does and how
+to start, in place of an empty pane. Avocado's landing pane already does the
+harder half of this with grounded starter questions.
+
+**E3-4. Timestamps and per-message share/pin.**
+
+*Estimate: 4–6 working days.*
+
 ### Phase F — Collaboration
 
 The genuinely hard phase. Multi-human threads need:
@@ -323,18 +446,21 @@ page, support/escalation footer.
 | C — History | 6–9 |
 | D — Shell polish | 6–8 |
 | E — Schedules | 5–8 |
+| E2 — Tools and integrations | 12–16 |
+| E3 — Conversation instrumentation | 4–6 |
 | F — Collaboration | 15–20 |
 | G — Enterprise trim | 4–6 |
-| **Total** | **54–77 working days** |
+| **Total** | **70–99 working days** |
 
-That is **11–16 weeks full-time**, or roughly **6–9 months** at ten hours a
+That is **14–20 weeks full-time**, or roughly **8–12 months** at ten hours a
 week. AI assistance genuinely compresses the CRUD, the migrations and the React
 scaffolding — that is most of phases B, C, D and G. It compresses the hard parts
 much less: the artifact sandboxing decision, the presence/conflict semantics in
 phase F, and every race condition, which are found by running the thing, not by
 generating it.
 
-**Phases A + C + D — about five weeks — close most of the visible difference.**
+**Phases A + C + D + E3 — about six weeks — close most of the visible
+difference.**
 Artifacts and a real history page are what make the two products look like peers
 in a screenshot. Phase F is what makes them peers in fact, and it costs more
 than the other five combined.
@@ -348,5 +474,11 @@ than the other five combined.
   carry them.
 - **Do not weaken the sandbox** to make artifacts easier. Model-authored HTML
   renders in a null-origin iframe or it does not render.
+- **Do not build seventeen bespoke connectors.** Implement MCP once and each
+  integration becomes a server, not a branch in this codebase. The registry is
+  the feature; the connectors are content.
+- **Do not let tools be free.** Every enabled tool spends context whether or not
+  it is called. Meter it and say so, rather than letting answer quality decay
+  invisibly as someone switches more on.
 - **Do not rename `workspace_id`.** The UI can say "Space"; the schema, the
   repositories and every RLS policy stay as they are.
