@@ -237,7 +237,7 @@ export function ChatView({
             description="Answers are grounded in your uploaded documents, with citations you can check."
           />
         ) : (
-          <div className="mx-auto max-w-3xl space-y-5">
+          <div className="mx-auto max-w-3xl space-y-4">
             {messages?.map((message) => (
               <MessageBubble key={message.id} message={message} />
             ))}
@@ -281,17 +281,9 @@ export function ChatView({
 
           <div ref={voiceFeedbackRef} />
 
-          <div className="flex items-end gap-1 rounded-2xl border border-border-subtle bg-surface p-1.5 shadow-[0_2px_12px_rgba(30,50,30,0.05)] focus-within:border-accent/40 focus-within:ring-2 focus-within:ring-accent/15">
-            <button
-              type="button"
-              onClick={() => fileInputRef.current?.click()}
-              disabled={upload.isPending || isStreaming}
-              aria-label="Upload a document"
-              className="flex size-9 shrink-0 items-center justify-center rounded-xl text-lg font-medium text-ink-muted transition-colors hover:bg-surface-sunken hover:text-ink disabled:opacity-50"
-            >
-              {upload.isPending ? <Spinner className="size-3.5" /> : '+'}
-            </button>
-
+          {/* Two rows: the question gets the full width, and the controls that
+              act on it sit beneath rather than squeezing it from both ends. */}
+          <div className="rounded-2xl border border-border-subtle bg-surface px-2 pb-1.5 pt-2 shadow-[0_2px_12px_rgba(0,0,0,0.06)] focus-within:border-accent/40 focus-within:ring-2 focus-within:ring-accent/15">
             <textarea
               value={draft}
               onChange={(e) => setDraft(e.target.value)}
@@ -305,20 +297,34 @@ export function ChatView({
               rows={1}
               disabled={isStreaming}
               className={cn(
-                'min-h-[36px] max-h-40 flex-1 resize-y rounded-xl border-0',
-                'bg-transparent px-2 py-2 text-sm text-ink placeholder:text-ink-muted/70',
-                'focus:outline-none focus:ring-0',
+                'block max-h-40 min-h-[38px] w-full resize-none border-0',
+                'bg-transparent px-1.5 py-1 text-sm leading-relaxed text-ink',
+                'placeholder:text-ink-muted/70 focus:outline-none focus:ring-0',
                 'disabled:opacity-60',
               )}
             />
 
-            {conversationId && (
-              <ToolsButton
-                workspaceId={workspaceId}
-                conversationId={conversationId}
-                onOpen={() => setToolsOpen(true)}
-              />
-            )}
+            <div className="mt-1 flex items-center gap-0.5">
+              <button
+                type="button"
+                onClick={() => fileInputRef.current?.click()}
+                disabled={upload.isPending || isStreaming}
+                aria-label="Attach a document"
+                title="Attach a document"
+                className="flex size-8 shrink-0 items-center justify-center rounded-lg text-base text-ink-muted transition-colors hover:bg-surface-sunken hover:text-ink disabled:opacity-50"
+              >
+                {upload.isPending ? <Spinner className="size-3.5" /> : '+'}
+              </button>
+
+              {conversationId && (
+                <ToolsButton
+                  workspaceId={workspaceId}
+                  conversationId={conversationId}
+                  onOpen={() => setToolsOpen(true)}
+                />
+              )}
+
+              <div className="flex-1" />
 
             {voice?.live_transcription && (
               <VoiceInput
@@ -332,15 +338,22 @@ export function ChatView({
               />
             )}
 
-            <Button
-              onClick={submitDraft}
-              loading={isStreaming}
-              disabled={!draft.trim()}
-              className="self-end"
-              size="sm"
-            >
-              Send
-            </Button>
+              <button
+                type="button"
+                onClick={submitDraft}
+                disabled={!draft.trim() || isStreaming}
+                aria-label="Send"
+                title="Send"
+                className={cn(
+                  'flex size-8 shrink-0 items-center justify-center rounded-full transition-colors',
+                  draft.trim() && !isStreaming
+                    ? 'bg-accent text-white hover:bg-accent-strong'
+                    : 'bg-surface-sunken text-ink-muted',
+                )}
+              >
+                {isStreaming ? <Spinner className="size-3.5" /> : '↑'}
+              </button>
+            </div>
           </div>
 
           <input
@@ -637,7 +650,7 @@ function ToolsButton({
 
 function AnswerBody({ content }: { content: string }) {
   return (
-    <div className="space-y-3 text-[15px] leading-7 text-ink [&_blockquote]:border-l-2 [&_blockquote]:border-accent/40 [&_blockquote]:pl-4 [&_blockquote]:text-ink-muted [&_h1]:font-display [&_h1]:text-xl [&_h1]:font-semibold [&_h2]:font-display [&_h2]:text-lg [&_h2]:font-semibold [&_h3]:font-semibold [&_li]:ml-5 [&_li]:pl-1 [&_ol]:list-decimal [&_ol]:space-y-1.5 [&_ul]:list-disc [&_ul]:space-y-1.5">
+    <div className="space-y-3 text-[15px] leading-7 text-ink [&_blockquote]:border-l-2 [&_blockquote]:border-accent/40 [&_blockquote]:pl-4 [&_blockquote]:text-ink-muted [&_h1]:text-lg [&_h1]:font-semibold [&_h2]:text-base [&_h2]:font-semibold [&_h3]:font-semibold [&_li]:ml-5 [&_li]:pl-1 [&_ol]:list-decimal [&_ol]:space-y-1.5 [&_ul]:list-disc [&_ul]:space-y-1.5">
       <Markdown
         components={{
           p: ({ children }) => <p>{children}</p>,

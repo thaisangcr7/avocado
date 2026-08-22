@@ -408,7 +408,7 @@ function TopBar({
             <select
               value=""
               onChange={(e) => e.target.value && onOpenTeam(e.target.value)}
-              className="h-8 max-w-[8rem] truncate rounded-lg border border-border-subtle bg-surface px-2 text-sm text-ink sm:max-w-none"
+              className="h-8 max-w-[9rem] cursor-pointer truncate rounded-lg border border-border-subtle/80 bg-surface-sunken px-2 text-sm text-ink transition-colors hover:border-border-subtle focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/20 sm:max-w-none"
             >
               <option value="">Team…</option>
               {teams.map((team) => (
@@ -479,7 +479,7 @@ function ModelPicker() {
             preferred_model: value === 'auto' ? null : value,
           })
         }}
-        className="h-8 max-w-[9rem] truncate rounded-lg border border-border-subtle bg-surface px-2 text-sm text-ink sm:max-w-none"
+        className="h-8 max-w-[9rem] cursor-pointer truncate rounded-lg border border-border-subtle/80 bg-surface-sunken px-2 text-sm text-ink transition-colors hover:border-border-subtle focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/20 sm:max-w-none"
       >
         <option value="auto">
           Auto{catalog.auto_available ? '' : ' (no provider configured)'}
@@ -541,7 +541,7 @@ function WorkspaceSwitcher() {
             value={name}
             onChange={(e) => setName(e.target.value)}
             placeholder="Workspace name"
-            className="h-8 min-w-0 flex-1 rounded-lg border border-border-subtle bg-surface px-2 text-sm"
+            className="h-8 min-w-0 flex-1 cursor-pointer rounded-lg border border-border-subtle/80 bg-surface-sunken px-2 text-sm text-ink focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/20"
           />
           <Button type="submit" size="sm" loading={createWorkspace.isPending}>
             Add
