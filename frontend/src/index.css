@@ -22,9 +22,35 @@
   --font-sans: 'Figtree', ui-sans-serif, system-ui, sans-serif;
 }
 
+/* Dark is a full re-grounding, not an inversion: the surfaces go near-black so
+   content reads as lit panels on a dark ground, and the accent lifts because a
+   mid green that works on paper disappears against it.
+
+   Applied by a data attribute rather than only prefers-color-scheme, so the
+   in-app switch can override the system in both directions. */
+[data-theme='dark'] {
+  --color-surface: oklch(16% 0.008 150);
+  --color-surface-raised: oklch(20.5% 0.01 150);
+  --color-surface-sunken: oklch(13% 0.008 150);
+  --color-border-subtle: oklch(30% 0.012 150);
+  --color-ink: oklch(96% 0.008 150);
+  --color-ink-muted: oklch(70% 0.015 150);
+  --color-accent: oklch(72% 0.15 145);
+  --color-accent-strong: oklch(82% 0.16 145);
+  --color-accent-soft: oklch(28% 0.05 145);
+  --color-danger: oklch(70% 0.17 25);
+  --color-danger-soft: oklch(27% 0.06 25);
+  --color-warning: oklch(78% 0.14 75);
+  --color-warning-soft: oklch(28% 0.05 75);
+}
+
 @layer base {
   html {
     color-scheme: light;
+  }
+
+  html[data-theme='dark'] {
+    color-scheme: dark;
   }
 
   body {

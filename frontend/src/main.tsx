@@ -3,7 +3,19 @@ import { createRoot } from 'react-dom/client'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 
 import { App } from './App'
+import { applyTheme, useThemeStore } from './stores/theme'
 import './index.css'
+
+// Before the first render, so the app never paints light and then flips.
+applyTheme(useThemeStore.getState().choice)
+
+// A user on `system` follows the OS when it changes mid-session.
+window
+  .matchMedia?.('(prefers-color-scheme: dark)')
+  .addEventListener?.('change', () => {
+    const { choice } = useThemeStore.getState()
+    if (choice === 'system') applyTheme(choice)
+  })
 
 const queryClient = new QueryClient({
   defaultOptions: {
