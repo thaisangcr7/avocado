@@ -22,7 +22,9 @@ paragraph and paraphrase it. Avocado does that too, but when the question is
 analytical ("what's the month-over-month trend by region?") it writes pandas,
 runs it, and returns both the number and the program that produced it.
 
-Full design: [`docs/architecture.md`](docs/architecture.md).
+Full design: [`docs/architecture.md`](docs/architecture.md). Feature roadmap
+toward workspace-platform parity — artifacts, presets, schedules, collaboration —
+with effort estimates: [`docs/workspaces-parity.md`](docs/workspaces-parity.md).
 
 ---
 
