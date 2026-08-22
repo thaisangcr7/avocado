@@ -20,18 +20,24 @@ from app.models.enums import (
     Role,
     SuggestionKind,
     TaskStatus,
+    ToolCategory,
+    ToolKind,
     TranscriptStatus,
 )
 from app.models.invitations import Invitation, InvitationStatus
 from app.models.knowledge import DocumentClassification
 from app.models.projects import Project, ProjectMember, Task
 from app.models.tenancy import Organization, Team, TeamMembership, User, Workspace
+from app.models.tools import ConversationTool
 from app.models.usage import ApiUsageLog
 from app.models.voice import VoiceRecording
 
 __all__ = [
     "AnalysisRun",
     "Artifact",
+    "ConversationTool",
+    "ToolCategory",
+    "ToolKind",
     "ArtifactAuthor",
     "ArtifactKind",
     "AnalysisStatus",

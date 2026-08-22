@@ -138,3 +138,28 @@ class ArtifactAuthor(StrEnum):
 
     AI = "ai"
     USER = "user"
+
+
+class ToolCategory(StrEnum):
+    """Which tab an integration appears under."""
+
+    ANALYTICS = "analytics"
+    ENGINEERING = "engineering"
+    KNOWLEDGE = "knowledge"
+    ADMIN = "admin"
+    DATA = "data"
+
+
+class ToolKind(StrEnum):
+    """How a tool is reached.
+
+    `BUILTIN` is served in-process by this application. `MCP` is a Model Context
+    Protocol server, which is the shape every future integration should take —
+    a connector then costs a config row rather than a branch in this codebase.
+    `PLACEHOLDER` is declared but not yet connected: it appears in the registry
+    and refuses to run, rather than pretending to work.
+    """
+
+    BUILTIN = "builtin"
+    MCP = "mcp"
+    PLACEHOLDER = "placeholder"

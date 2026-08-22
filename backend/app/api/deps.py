@@ -51,6 +51,7 @@ from app.repositories.tenancy import (
     UserRepository,
     WorkspaceRepository,
 )
+from app.repositories.tools import ConversationToolRepository
 from app.repositories.usage import UsageRepository
 from app.repositories.voice import VoiceRecordingRepository
 from app.services.analysis_service import AnalysisService
@@ -68,6 +69,7 @@ from app.services.report_service import ReportService
 from app.services.suggestion_service import SuggestionService
 from app.services.task_resume_service import TaskResumeService
 from app.services.team_service import TeamService
+from app.services.tool_service import ToolService
 from app.services.usage_service import UsageService
 from app.services.workspace_service import WorkspaceService
 
@@ -153,6 +155,9 @@ ConversationsDep = Annotated[ConversationRepository, Depends(_repo(ConversationR
 MessagesDep = Annotated[MessageRepository, Depends(_repo(MessageRepository))]
 RunsDep = Annotated[AnalysisRunRepository, Depends(_repo(AnalysisRunRepository))]
 ArtifactsDep = Annotated[ArtifactRepository, Depends(_repo(ArtifactRepository))]
+ConversationToolsDep = Annotated[
+    ConversationToolRepository, Depends(_repo(ConversationToolRepository))
+]
 UsageRepoDep = Annotated[UsageRepository, Depends(_repo(UsageRepository))]
 VoiceRecordingsDep = Annotated[VoiceRecordingRepository, Depends(_repo(VoiceRecordingRepository))]
 InvitationsDep = Annotated[InvitationRepository, Depends(_repo(InvitationRepository))]
@@ -272,6 +277,13 @@ def get_artifact_service(artifacts: ArtifactsDep, router: RouterDep) -> Artifact
 
 
 ArtifactServiceDep = Annotated[ArtifactService, Depends(get_artifact_service)]
+
+
+def get_tool_service(selections: ConversationToolsDep) -> ToolService:
+    return ToolService(selections=selections)
+
+
+ToolServiceDep = Annotated[ToolService, Depends(get_tool_service)]
 
 
 def get_team_service(

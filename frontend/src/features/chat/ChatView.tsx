@@ -20,9 +20,11 @@ import {
   queryKeys,
   useDocuments,
   useMessages,
+  useModels,
   useUploadDocument,
   useVoiceCapabilities,
 } from '@/hooks/queries'
+import { ContextGauge } from '@/features/chat/ContextGauge'
 import { SuggestionsBar } from '@/features/tasks/SuggestionsBar'
 import { VoiceInput } from '@/features/voice/VoiceInput'
 import { cn } from '@/lib/utils'
@@ -51,6 +53,7 @@ export function ChatView({
 }) {
   const { data: messages, isLoading } = useMessages(workspaceId, conversationId)
   const { data: voice } = useVoiceCapabilities()
+  const { data: models } = useModels()
   const scopedDocumentIds = useWorkspaceStore((state) => state.scopedDocumentIds)
   const queryClient = useQueryClient()
   const upload = useUploadDocument(workspaceId)
@@ -251,6 +254,8 @@ export function ChatView({
 
       <div className="border-t border-border-subtle/80 bg-surface-raised/90 px-4 py-4 backdrop-blur-md sm:px-6">
         <div className="mx-auto max-w-3xl">
+          <ContextGauge messages={messages} models={models?.models} />
+
           <SuggestionsBar workspaceId={workspaceId} onOpenTask={onOpenTask} />
 
           {error && (

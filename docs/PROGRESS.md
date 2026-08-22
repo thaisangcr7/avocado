@@ -10,7 +10,7 @@ Plan and estimates: [`workspaces-parity.md`](workspaces-parity.md).
 
 ## Current phase
 
-**Phase A — Artifacts.** Complete. Next: Phase B (presets and slash commands).
+**Phase E3 (context gauge) done. Phase E2 (tools) backend done — modal UI next.**
 
 | Step | State |
 |---|---|
@@ -33,8 +33,8 @@ Plan and estimates: [`workspaces-parity.md`](workspaces-parity.md).
 | C — History and conversation management | ⬜ not started |
 | D — Shell and Spaces polish | ⬜ not started |
 | E — Schedules | ⬜ not started |
-| E2 — Tools and integrations (MCP) | ⬜ not started |
-| E3 — Conversation instrumentation | ⬜ not started |
+| E2 — Tools and integrations (MCP) | 🔨 backend done, modal UI next |
+| E3 — Conversation instrumentation | 🔨 gauge done; enhance + welcome left |
 | F — Collaboration | ⬜ not started |
 | G — Enterprise trim | ⬜ not started |
 
@@ -74,6 +74,8 @@ Recorded so they are not relitigated in a later session.
 
 Newest first. One line per shipped increment.
 
+- **E2 backend** · Tool registry with 2 real tools and 9 placeholders, per-conversation choices, and a reported context cost. A placeholder is shown but refuses to be switched on — a tool that silently does nothing would have the model report success it never had.
+- **E3-1** · Context gauge above the composer. No endpoint and no request: messages already record what was sent, and `ModelSpec` already carries the window.
 - **A5** · A successful analysis keeps its program as a `code` artifact, best-effort so a computation cannot fail over a panel entry. `POST /artifacts/generate` has the model author a document, which does raise on failure since it was asked for explicitly. Verified live: Opus 5 wrote a 3.2KB self-contained dashboard using the supplied figures and inventing none.
 - **A6–A7** · `ArtifactFrame` renders model HTML in a null-origin sandboxed iframe with a `default-src 'none'` policy; `ArtifactPanel` adds the version picker, source toggle and download. Six tests assert the sandbox, verified by confirming they fail when `allow-same-origin` is added.
 - **A2–A4** · Repository, service, resources and four endpoints. Listing returns the newest version of each artifact, not every version. HTML downloads as an attachment with `nosniff`, never as `text/html`. 19 tests including cross-tenant reads, writes and the database policy.
