@@ -38,51 +38,51 @@ export function ArtifactPanel({
   onOpenAnalysis?: (documentId: string, run?: AnalysisRun) => void
 }) {
   return (
-    <div className="flex h-full flex-col overflow-y-auto">
-      <section className="border-b border-border-subtle/80 px-4 py-4">
-        <h3 className="font-display text-sm font-semibold tracking-tight text-ink">
+    <div className="flex h-full flex-col gap-2 overflow-y-auto p-2">
+      <section className="rounded-xl border border-border-subtle/70 bg-surface-raised p-3">
+        <h3 className="text-[11px] font-semibold uppercase tracking-[0.08em] text-ink-muted">
           Artifacts
         </h3>
         <p className="mt-0.5 text-xs text-ink-muted">
           Documents and programs the assistant produced here.
         </p>
-        <div className="mt-3">
+        <div className="mt-2.5">
           <ArtifactsSection workspaceId={workspaceId} />
         </div>
       </section>
 
-      <section className="border-b border-border-subtle/80 px-4 py-4">
-        <h3 className="font-display text-sm font-semibold tracking-tight text-ink">
+      <section className="rounded-xl border border-border-subtle/70 bg-surface-raised p-3">
+        <h3 className="text-[11px] font-semibold uppercase tracking-[0.08em] text-ink-muted">
           Analysis runs
         </h3>
         <p className="mt-0.5 text-xs text-ink-muted">
           Computed results from spreadsheets — charts, tables, and code.
         </p>
-        <div className="mt-3">
+        <div className="mt-2.5">
           <RecentAnalyses workspaceId={workspaceId} onOpenAnalysis={onOpenAnalysis} />
         </div>
       </section>
 
-      <section className="border-b border-border-subtle/80 px-4 py-4">
-        <h3 className="font-display text-sm font-semibold tracking-tight text-ink">
+      <section className="rounded-xl border border-border-subtle/70 bg-surface-raised p-3">
+        <h3 className="text-[11px] font-semibold uppercase tracking-[0.08em] text-ink-muted">
           Knowledge
         </h3>
         <p className="mt-0.5 text-xs text-ink-muted">
           Policies and processes classified from your documents.
         </p>
-        <div className="mt-3">
+        <div className="mt-2.5">
           <KnowledgeSnippet workspaceId={workspaceId} />
         </div>
       </section>
 
-      <section className="px-4 py-4">
-        <h3 className="font-display text-sm font-semibold tracking-tight text-ink">
+      <section className="rounded-xl border border-border-subtle/70 bg-surface-raised p-3">
+        <h3 className="text-[11px] font-semibold uppercase tracking-[0.08em] text-ink-muted">
           Projects
         </h3>
         <p className="mt-0.5 text-xs text-ink-muted">
           Tasks you can see — open one to pick up where you left off.
         </p>
-        <div className="mt-3">
+        <div className="mt-2.5">
           <ProjectsSnippet workspaceId={workspaceId} onResumeTask={onResumeTask} />
         </div>
       </section>

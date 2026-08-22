@@ -26,7 +26,7 @@ import {
 } from '@/hooks/queries'
 import { cn, formatRelativeTime } from '@/lib/utils'
 import { useAuthStore } from '@/stores/auth'
-import { useThemeStore, type ThemeChoice } from '@/stores/theme'
+import { NavRail } from '@/features/workspace/NavRail'
 import { useWorkspaceStore } from '@/stores/workspace'
 
 type LibraryTab = 'documents' | 'artifacts'
@@ -90,6 +90,32 @@ export function WorkspaceShell() {
       />
 
       <div className="relative flex min-h-0 flex-1 overflow-hidden">
+        <NavRail
+          active={rightOpen ? 'library' : threadsOpen ? 'history' : 'chat'}
+          onNewChat={() =>
+            startConversation.mutate(undefined, {
+              onSuccess: (conversation) => {
+                setActiveConversationId(conversation.id)
+                setPendingQuestion(null)
+              },
+            })
+          }
+          onNavigate={(destination) => {
+            if (destination === 'chat') {
+              setThreadsOpen(false)
+              setRightOpen(false)
+              return
+            }
+            if (destination === 'library') {
+              setRightOpen((open) => !open)
+              return
+            }
+            // History and Spaces both live in the threads column — Spaces is
+            // its switcher at the top — so both open it.
+            setThreadsOpen((open) => (destination === 'spaces' ? true : !open))
+          }}
+        />
+
         {(threadsOpen || rightOpen) && (
           <button
             type="button"
@@ -325,36 +351,6 @@ function LibraryRail({
   )
 }
 
-/**
- * Light / dark / follow the system.
- *
- * Three states rather than two: a switch that only toggles has no way back to
- * "whatever my machine is doing", which is where most people want to be.
- */
-function ThemeToggle() {
-  const choice = useThemeStore((state) => state.choice)
-  const setChoice = useThemeStore((state) => state.setChoice)
-
-  const next: Record<ThemeChoice, ThemeChoice> = {
-    system: 'light',
-    light: 'dark',
-    dark: 'system',
-  }
-  const icon: Record<ThemeChoice, string> = { system: '◐', light: '☀', dark: '☾' }
-
-  return (
-    <button
-      type="button"
-      onClick={() => setChoice(next[choice])}
-      title={`Theme: ${choice}. Click for ${next[choice]}.`}
-      aria-label={`Theme: ${choice}. Switch to ${next[choice]}.`}
-      className="flex size-8 items-center justify-center rounded-lg text-sm text-ink-muted transition-colors hover:bg-surface-sunken hover:text-ink"
-    >
-      {icon[choice]}
-    </button>
-  )
-}
-
 function TopBar({
   threadsOpen,
   rightOpen,
@@ -447,7 +443,6 @@ function TopBar({
             {user.email}
           </span>
         )}
-        <ThemeToggle />
         <Button variant="ghost" size="sm" onClick={signOut}>
           Sign out
         </Button>
