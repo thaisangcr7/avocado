@@ -222,6 +222,7 @@ export function WorkspaceShell() {
           {activeWorkspaceId && (
             <LibraryRail
               workspaceId={activeWorkspaceId}
+              conversationId={activeConversationId}
               tab={libraryTab}
               view={rightView}
               onTabChange={(tab) => {
@@ -261,6 +262,7 @@ export function WorkspaceShell() {
 
 function LibraryRail({
   workspaceId,
+  conversationId,
   tab,
   view,
   onTabChange,
@@ -275,6 +277,7 @@ function LibraryRail({
   onOpenThread,
 }: {
   workspaceId: string
+  conversationId: string | null
   tab: LibraryTab
   view: RightPanelView
   onTabChange: (tab: LibraryTab) => void
@@ -291,32 +294,9 @@ function LibraryRail({
   return (
     <div className="flex h-full min-h-0 flex-col">
       <div className="flex h-12 shrink-0 items-center gap-2 border-b border-border-subtle/80 px-2">
-        <nav
-          className="flex min-w-0 flex-1 items-center gap-0.5 rounded-xl bg-surface-sunken/80 p-0.5"
-          aria-label="Library"
-        >
-          {(
-            [
-              { id: 'documents', label: 'Documents' },
-              { id: 'artifacts', label: 'Artifacts' },
-            ] as const
-          ).map((candidate) => (
-            <button
-              key={candidate.id}
-              type="button"
-              onClick={() => onTabChange(candidate.id)}
-              aria-current={tab === candidate.id ? 'page' : undefined}
-              className={cn(
-                'flex-1 rounded-lg px-3 py-1.5 text-sm font-medium transition-all',
-                tab === candidate.id
-                  ? 'bg-surface-raised text-ink shadow-[0_1px_3px_rgba(30,50,30,0.1)]'
-                  : 'text-ink-muted hover:text-ink',
-              )}
-            >
-              {candidate.label}
-            </button>
-          ))}
-        </nav>
+        <p className="min-w-0 flex-1 px-2 text-[11px] font-semibold uppercase tracking-[0.08em] text-ink-muted">
+          Library
+        </p>
         <button
           type="button"
           onClick={onClose}
@@ -346,18 +326,26 @@ function LibraryRail({
             teamId={settingsTeamId}
             onClose={() => onTabChange(tab)}
           />
-        ) : view === 'documents' ? (
-          <DocumentPanel
-            workspaceId={workspaceId}
-            onSelectDocument={onSelectDocument}
-            compactUpload
-          />
         ) : (
-          <ArtifactPanel
-            workspaceId={workspaceId}
-            onResumeTask={onResumeTask}
-            onOpenAnalysis={onOpenAnalysis}
-          />
+          // One column, three shelves: what the assistant produced, what came
+          // in through this thread, and what the space holds. They were behind
+          // tabs, which made them look like alternatives rather than parts of
+          // the same library.
+          <div className="h-full overflow-y-auto">
+            <ArtifactPanel
+              workspaceId={workspaceId}
+              onResumeTask={onResumeTask}
+              onOpenAnalysis={onOpenAnalysis}
+            />
+            <div className="border-t border-border-subtle/80">
+              <DocumentPanel
+                workspaceId={workspaceId}
+                conversationId={conversationId}
+                onSelectDocument={onSelectDocument}
+                compactUpload
+              />
+            </div>
+          </div>
         )}
       </div>
     </div>

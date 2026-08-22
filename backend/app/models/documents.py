@@ -33,6 +33,17 @@ class Document(Base, UUIDPrimaryKeyMixin, TimestampMixin):
     uploaded_by: Mapped[uuid.UUID | None] = mapped_column(
         PGUUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL")
     )
+    # Where the file was brought in. NULL means it belongs to the workspace at
+    # large rather than to one thread — a reference the whole team works from,
+    # as opposed to something dropped into a conversation to ask about.
+    #
+    # Retrieval ignores this: a document is searchable across the workspace
+    # however it arrived. It only decides which shelf the file is shown on.
+    # SET NULL on delete, because deleting a thread must not delete the
+    # documents it happened to be the entry point for.
+    conversation_id: Mapped[uuid.UUID | None] = mapped_column(
+        PGUUID(as_uuid=True), ForeignKey("conversations.id", ondelete="SET NULL"), index=True
+    )
 
     filename: Mapped[str] = mapped_column(String(500), nullable=False)
     content_type: Mapped[str] = mapped_column(String(150), nullable=False)

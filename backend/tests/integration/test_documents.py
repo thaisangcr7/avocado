@@ -334,3 +334,74 @@ async def test_chunks_record_the_embedding_space_that_produced_them(
             embedding_model="openai:text-embedding-3-small:1024",
         )
         assert other_space == [], "chunks from another embedding space must not be returned"
+
+
+async def test_a_file_remembers_the_conversation_it_arrived_in(client, account):
+    """The rail shows three stores — what the assistant made, what you dropped
+    into this thread, and what the workspace holds — and they can only be told
+    apart if a file records how it arrived."""
+    conversation = await client.post(
+        f"/workspaces/{account['workspace_id']}/conversations",
+        json={"title": "with a file"},
+        headers=account["headers"],
+    )
+    conversation_id = conversation.json()["id"]
+
+    in_thread = await client.post(
+        f"/workspaces/{account['workspace_id']}/documents",
+        files={"file": ("dropped.txt", io.BytesIO(b"in the thread"), "text/plain")},
+        data={"conversation_id": conversation_id},
+        headers=account["headers"],
+    )
+    assert in_thread.status_code == 201, in_thread.text
+    assert in_thread.json()["document"]["conversation_id"] == conversation_id
+
+
+async def test_a_file_uploaded_outside_a_thread_belongs_to_the_workspace(client, account):
+    response = await client.post(
+        f"/workspaces/{account['workspace_id']}/documents",
+        files={"file": ("shared.txt", io.BytesIO(b"workspace wide"), "text/plain")},
+        headers=account["headers"],
+    )
+    assert response.status_code == 201
+    assert response.json()["document"]["conversation_id"] is None
+
+
+async def test_where_a_file_arrived_does_not_narrow_retrieval(client, account):
+    """A document dropped into one thread is still the workspace's knowledge.
+    Scoping search to the thread would quietly hide it from every other one."""
+    conversation = await client.post(
+        f"/workspaces/{account['workspace_id']}/conversations",
+        json={"title": "origin"},
+        headers=account["headers"],
+    )
+    uploaded = await client.post(
+        f"/workspaces/{account['workspace_id']}/documents",
+        files={
+            "file": (
+                "badger.txt",
+                io.BytesIO(b"The quarterly badger census counted 41 badgers." * 8),
+                "text/plain",
+            )
+        },
+        data={"conversation_id": conversation.json()["id"]},
+        headers=account["headers"],
+    )
+    document = await wait_for_ready(client, uploaded.json()["document"]["id"], account["headers"])
+    assert document["status"] == "ready"
+
+    # Asked from a different conversation entirely.
+    elsewhere = await client.post(
+        f"/workspaces/{account['workspace_id']}/conversations",
+        json={"title": "somewhere else"},
+        headers=account["headers"],
+    )
+    answer = await client.post(
+        f"/workspaces/{account['workspace_id']}/conversations/{elsewhere.json()['id']}/messages",
+        json={"content": "How many badgers were counted?"},
+        headers=account["headers"],
+    )
+    assert answer.status_code == 201
+    assert answer.json()["assistant_message"][
+        "citations"
+    ], "a file uploaded in another thread must still be retrievable"

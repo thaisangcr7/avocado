@@ -64,6 +64,7 @@ class DocumentService:
         filename: str,
         content_type: str,
         data: bytes,
+        conversation_id: uuid.UUID | None = None,
     ) -> DocumentUploadResponse:
         if not data:
             raise ValidationError("The uploaded file is empty.")
@@ -96,6 +97,7 @@ class DocumentService:
                 id=document_id,
                 workspace_id=workspace_id,
                 uploaded_by=user_id,
+                conversation_id=conversation_id,
                 filename=filename,
                 content_type=content_type,
                 doc_type=doc_type,

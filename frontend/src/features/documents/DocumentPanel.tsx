@@ -6,7 +6,7 @@
  * the answer is missing, not just get nothing.
  */
 
-import { useCallback, useRef, useState, type DragEvent } from 'react'
+import { useCallback, useRef, useState, type DragEvent, type ReactNode } from 'react'
 
 import { ApiError } from '@/api/client'
 import { Badge, Button, EmptyState, ErrorNotice, Spinner } from '@/components/ui/primitives'
@@ -40,12 +40,65 @@ const TYPE_ICON: Record<string, string> = {
   audio: '🎙️',
 }
 
+/**
+ * Files split by where they came from.
+ *
+ * A document dropped into a thread and one the whole team works from are
+ * different things to a reader, even though retrieval treats them the same.
+ * Collapsing them into one list is what makes a workspace's shelf feel like a
+ * junk drawer as it fills.
+ *
+ * The split only appears when there is something on both sides — a heading
+ * over a single group is noise.
+ */
+function DocumentStores({
+  documents,
+  conversationId,
+  renderRow,
+}: {
+  documents: Document[]
+  conversationId: string | null
+  renderRow: (document: Document) => ReactNode
+}) {
+  const here = conversationId
+    ? documents.filter((d) => d.conversation_id === conversationId)
+    : []
+  const rest = documents.filter((d) => !here.includes(d))
+
+  if (!here.length) {
+    return <ul className="space-y-1.5">{rest.map(renderRow)}</ul>
+  }
+
+  return (
+    <div className="space-y-4">
+      <section>
+        <h4 className="mb-1.5 text-[11px] font-semibold uppercase tracking-[0.08em] text-ink-muted">
+          In this conversation
+        </h4>
+        <ul className="space-y-1.5">{here.map(renderRow)}</ul>
+      </section>
+
+      {rest.length > 0 && (
+        <section>
+          <h4 className="mb-1.5 text-[11px] font-semibold uppercase tracking-[0.08em] text-ink-muted">
+            In this space
+          </h4>
+          <ul className="space-y-1.5">{rest.map(renderRow)}</ul>
+        </section>
+      )}
+    </div>
+  )
+}
+
 export function DocumentPanel({
   workspaceId,
+  conversationId,
   onSelectDocument,
   compactUpload = false,
 }: {
   workspaceId: string
+  /** Splits the list into this thread's files and the workspace's. */
+  conversationId?: string | null
   onSelectDocument: (document: Document) => void
   /** Smaller drop zone when upload also lives in the chat composer. */
   compactUpload?: boolean
@@ -190,8 +243,10 @@ export function DocumentPanel({
             description="Upload a spreadsheet to run analysis, or a document to ask questions about it."
           />
         ) : (
-          <ul className="space-y-1.5">
-            {documents.map((document) => (
+          <DocumentStores
+            documents={documents}
+            conversationId={conversationId ?? null}
+            renderRow={(document) => (
               <DocumentRow
                 key={document.id}
                 document={document}
@@ -201,8 +256,8 @@ export function DocumentPanel({
                 onDelete={() => remove.mutate(document.id)}
                 onReprocess={() => reprocess.mutate(document.id)}
               />
-            ))}
-          </ul>
+            )}
+          />
         )}
       </div>
     </div>

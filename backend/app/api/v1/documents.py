@@ -10,7 +10,7 @@ from __future__ import annotations
 import uuid
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, File, Query, Request, UploadFile, status
+from fastapi import APIRouter, Depends, File, Form, Query, Request, UploadFile, status
 
 from app.api.deps import (
     ChunksDep,
@@ -65,6 +65,7 @@ async def upload_document(
     service: DocumentServiceDep,
     settings: SettingsDep,
     file: Annotated[UploadFile, File()],
+    conversation_id: Annotated[uuid.UUID | None, Form()] = None,
 ) -> DocumentUploadResponse:
     """Upload a PDF, Word file, spreadsheet, CSV, image or text file.
 
@@ -88,6 +89,7 @@ async def upload_document(
         filename=file.filename or "upload",
         content_type=file.content_type or "application/octet-stream",
         data=b"".join(parts),
+        conversation_id=conversation_id,
     )
 
 

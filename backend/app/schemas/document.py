@@ -15,6 +15,10 @@ from app.schemas.common import ApiModel
 class DocumentResponse(ApiModel):
     id: uuid.UUID
     workspace_id: uuid.UUID
+    # Which conversation the file was brought in through, if any. Null means it
+    # belongs to the workspace at large. Retrieval does not care either way;
+    # this only decides which shelf it is shown on.
+    conversation_id: uuid.UUID | None
     filename: str
     content_type: str
     doc_type: DocumentType

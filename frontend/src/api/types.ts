@@ -80,6 +80,8 @@ export interface DocumentTable {
 export interface Document {
   id: string
   workspace_id: string
+  /** Which conversation the file arrived in; null means the workspace at large. */
+  conversation_id: string | null
   filename: string
   content_type: string
   doc_type: DocumentType
