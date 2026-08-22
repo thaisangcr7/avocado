@@ -115,3 +115,26 @@ class ProjectVisibility(StrEnum):
 
     RESTRICTED = "restricted"
     WORKSPACE = "workspace"
+
+
+class ArtifactKind(StrEnum):
+    """What an artifact is, which decides how it is rendered.
+
+    `HTML` is the interesting one and the reason the renderer is sandboxed: it
+    is written by a model from the user's own documents, so it is untrusted
+    input that happens to be markup.
+    """
+
+    HTML = "html"
+    MARKDOWN = "markdown"
+    CODE = "code"
+    CHART = "chart"
+    TABLE = "table"
+
+
+class ArtifactAuthor(StrEnum):
+    """Who produced a version. A user edit and a model edit are both versions,
+    and telling them apart is what makes the history readable."""
+
+    AI = "ai"
+    USER = "user"

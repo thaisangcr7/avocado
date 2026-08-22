@@ -4,10 +4,13 @@ Imported as a package so Alembic autogenerate sees every table on `Base`.
 """
 
 from app.models.analysis import AnalysisRun
+from app.models.artifacts import Artifact
 from app.models.conversations import Conversation, Message
 from app.models.documents import Document, DocumentChunk, DocumentTable
 from app.models.enums import (
     AnalysisStatus,
+    ArtifactAuthor,
+    ArtifactKind,
     DocumentKind,
     DocumentStatus,
     DocumentType,
@@ -28,6 +31,9 @@ from app.models.voice import VoiceRecording
 
 __all__ = [
     "AnalysisRun",
+    "Artifact",
+    "ArtifactAuthor",
+    "ArtifactKind",
     "AnalysisStatus",
     "ApiUsageLog",
     "Conversation",
