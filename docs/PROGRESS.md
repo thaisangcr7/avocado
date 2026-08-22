@@ -15,9 +15,9 @@ Plan and estimates: [`workspaces-parity.md`](workspaces-parity.md).
 | Step | State |
 |---|---|
 | A1 · `artifacts` table + migration | ✅ done |
-| A2 · Repository, scoped by workspace | ⬜ not started |
-| A3 · Service + resource schemas | ⬜ not started |
-| A4 · Endpoints | ⬜ not started |
+| A2 · Repository, scoped by workspace | ✅ done |
+| A3 · Service + resource schemas | ✅ done |
+| A4 · Endpoints | ✅ done |
 | A5 · Model emits artifacts | ⬜ not started |
 | A6 · Frontend panel (sandboxed iframe) | ⬜ not started |
 | A7 · Version history UI | ⬜ not started |
@@ -67,4 +67,5 @@ Recorded so they are not relitigated in a later session.
 
 Newest first. One line per shipped increment.
 
+- **A2–A4** · Repository, service, resources and four endpoints. Listing returns the newest version of each artifact, not every version. HTML downloads as an attachment with `nosniff`, never as `text/html`. 19 tests including cross-tenant reads, writes and the database policy.
 - **A1** · `artifacts` table, enums, migration `0011` with its RLS policy. Versions are rows sharing a `lineage_id`, not a mutable column.

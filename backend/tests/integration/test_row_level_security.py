@@ -265,7 +265,8 @@ async def test_writes_are_policed_too(restricted, two_tenants):
 
 
 @pytest.mark.parametrize(
-    "table", ["documents", "document_chunks", "conversations", "messages", "tasks"]
+    "table",
+    ["documents", "document_chunks", "conversations", "messages", "tasks", "artifacts"],
 )
 async def test_every_policed_table_is_scoped(restricted, two_tenants, table):
     """Each table individually, so adding one without a policy is caught."""

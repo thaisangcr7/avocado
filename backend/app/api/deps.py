@@ -34,6 +34,7 @@ from app.core.security import decode_token
 from app.db.rls import set_identity
 from app.models.tenancy import User, Workspace
 from app.repositories.analysis import AnalysisRunRepository
+from app.repositories.artifacts import ArtifactRepository
 from app.repositories.conversations import ConversationRepository, MessageRepository
 from app.repositories.documents import (
     ChunkRepository,
@@ -53,6 +54,7 @@ from app.repositories.tenancy import (
 from app.repositories.usage import UsageRepository
 from app.repositories.voice import VoiceRecordingRepository
 from app.services.analysis_service import AnalysisService
+from app.services.artifact_service import ArtifactService
 from app.services.auth_service import AuthService
 from app.services.chat_service import ChatService
 from app.services.ingestion_service import IngestionService
@@ -150,6 +152,7 @@ TablesDep = Annotated[DocumentTableRepository, Depends(_repo(DocumentTableReposi
 ConversationsDep = Annotated[ConversationRepository, Depends(_repo(ConversationRepository))]
 MessagesDep = Annotated[MessageRepository, Depends(_repo(MessageRepository))]
 RunsDep = Annotated[AnalysisRunRepository, Depends(_repo(AnalysisRunRepository))]
+ArtifactsDep = Annotated[ArtifactRepository, Depends(_repo(ArtifactRepository))]
 UsageRepoDep = Annotated[UsageRepository, Depends(_repo(UsageRepository))]
 VoiceRecordingsDep = Annotated[VoiceRecordingRepository, Depends(_repo(VoiceRecordingRepository))]
 InvitationsDep = Annotated[InvitationRepository, Depends(_repo(InvitationRepository))]
@@ -262,6 +265,13 @@ def get_membership_service(
 
 
 MembershipServiceDep = Annotated[MembershipService, Depends(get_membership_service)]
+
+
+def get_artifact_service(artifacts: ArtifactsDep) -> ArtifactService:
+    return ArtifactService(artifacts=artifacts)
+
+
+ArtifactServiceDep = Annotated[ArtifactService, Depends(get_artifact_service)]
 
 
 def get_team_service(
