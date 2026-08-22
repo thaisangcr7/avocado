@@ -88,6 +88,26 @@
       radial-gradient(ellipse 50% 40% at 50% 100%, oklch(88% 0.06 160 / 0.4), transparent 55%);
   }
 
+  /* The atmosphere is painted from literal colours rather than tokens, because
+     a gradient is a picture and not a surface. That means it does not follow a
+     theme change on its own, and left alone it put a light wash behind dark
+     panels — and behind near-white text, which disappeared entirely. */
+  [data-theme='dark'] .bg-atmosphere {
+    background-color: var(--color-surface);
+    background-image:
+      radial-gradient(ellipse 90% 60% at 12% -10%, oklch(38% 0.05 145 / 0.5), transparent 55%),
+      radial-gradient(ellipse 70% 50% at 95% 8%, oklch(32% 0.03 95 / 0.45), transparent 50%),
+      radial-gradient(ellipse 60% 40% at 70% 100%, oklch(35% 0.04 160 / 0.35), transparent 55%);
+  }
+
+  [data-theme='dark'] .bg-atmosphere-auth {
+    background-color: oklch(14% 0.01 150);
+    background-image:
+      radial-gradient(ellipse 80% 70% at 15% 20%, oklch(36% 0.06 145 / 0.5), transparent 55%),
+      radial-gradient(ellipse 60% 50% at 90% 10%, oklch(30% 0.04 95 / 0.45), transparent 50%),
+      radial-gradient(ellipse 50% 40% at 50% 100%, oklch(33% 0.05 160 / 0.4), transparent 55%);
+  }
+
   .text-balance {
     text-wrap: balance;
   }

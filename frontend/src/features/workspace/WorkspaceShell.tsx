@@ -27,6 +27,7 @@ import {
 import { cn, formatRelativeTime } from '@/lib/utils'
 import { useAuthStore } from '@/stores/auth'
 import { NavRail } from '@/features/workspace/NavRail'
+import { ResizeHandle, useResizableWidth } from '@/features/workspace/ResizeHandle'
 import { useWorkspaceStore } from '@/stores/workspace'
 
 type LibraryTab = 'documents' | 'artifacts'
@@ -47,6 +48,7 @@ export function WorkspaceShell() {
     () => window.matchMedia('(min-width: 1024px)').matches,
   )
   const [libraryTab, setLibraryTab] = useState<LibraryTab>('documents')
+  const [railWidth, setRailWidth] = useResizableWidth('avocado.rail_width', 420)
   const [rightView, setRightView] = useState<RightPanelView>('documents')
   // A question picked on the landing pane, held until the conversation it
   // will be asked in has been created.
@@ -199,11 +201,22 @@ export function WorkspaceShell() {
           )}
         </main>
 
+        {rightOpen && (
+          <ResizeHandle
+            width={railWidth}
+            onResize={setRailWidth}
+            label="Resize the documents panel"
+          />
+        )}
+
         <aside
+          // Width is inline because it is a dragged value, not one of a fixed
+          // set of sizes a utility class could name.
+          style={rightOpen ? { ['--rail-w' as string]: `${railWidth}px` } : undefined}
           className={cn(
             'z-30 flex-col border-l border-border-subtle/80 bg-surface-raised/95 backdrop-blur-md',
             'fixed bottom-0 right-0 top-14 w-[min(46rem,94vw)] shadow-2xl lg:static lg:shadow-none',
-            rightOpen ? 'flex lg:w-[min(42vw,44rem)] lg:shrink-0' : 'hidden',
+            rightOpen ? 'flex lg:w-(--rail-w) lg:shrink-0' : 'hidden',
           )}
         >
           {activeWorkspaceId && (

@@ -18,6 +18,39 @@ import { Button, Spinner } from '@/components/ui/primitives'
 import { formatDuration, useAudioRecorder } from './useAudioRecorder'
 import { cn } from '@/lib/utils'
 
+/**
+ * A drawn microphone rather than the emoji.
+ *
+ * An emoji renders in the platform's own colour and weight, so it sat in the
+ * composer as a small colour photograph among monochrome controls, and changed
+ * shape between operating systems. This inherits currentColor and the button's
+ * hover and recording states with it.
+ */
+function MicGlyph({ recording }: { recording: boolean }) {
+  if (recording) {
+    return (
+      <svg viewBox="0 0 16 16" className="size-3.5" aria-hidden="true" fill="currentColor">
+        <rect x="3" y="3" width="10" height="10" rx="2" />
+      </svg>
+    )
+  }
+  return (
+    <svg
+      viewBox="0 0 16 16"
+      className="size-4"
+      aria-hidden="true"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.4"
+      strokeLinecap="round"
+    >
+      <rect x="6" y="1.75" width="4" height="7.5" rx="2" />
+      <path d="M3.5 7v.75a4.5 4.5 0 0 0 9 0V7" />
+      <path d="M8 12.25v2" />
+    </svg>
+  )
+}
+
 export function VoiceInput({
   workspaceId,
   onTranscript,
@@ -132,9 +165,7 @@ export function VoiceInput({
         {status === 'requesting' ? (
           <Spinner className="size-3.5" />
         ) : (
-          <span aria-hidden="true" className="text-base leading-none">
-            {isRecording ? '■' : '🎙'}
-          </span>
+          <MicGlyph recording={isRecording} />
         )}
       </button>
     ) : (
