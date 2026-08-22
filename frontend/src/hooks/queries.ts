@@ -279,6 +279,17 @@ export function useSetTools(workspaceId: string, conversationId: string) {
   })
 }
 
+export function useRenameConversation(workspaceId: string) {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: ({ conversationId, title }: { conversationId: string; title: string }) =>
+      conversationApi.rename(workspaceId, conversationId, title),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: queryKeys.conversations(workspaceId) })
+    },
+  })
+}
+
 export function useOrganization() {
   return useQuery({ queryKey: queryKeys.organization, queryFn: teamApi.organization })
 }

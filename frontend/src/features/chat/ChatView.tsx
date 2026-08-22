@@ -18,14 +18,17 @@ import { Button, EmptyState, ErrorNotice, Spinner } from '@/components/ui/primit
 import { ReportArtifact } from '@/features/analysis/ReportArtifact'
 import {
   queryKeys,
+  useConversations,
   useDocuments,
   useMessages,
   useModels,
   useTools,
   useUploadDocument,
   useVoiceCapabilities,
+  useWorkspaces,
 } from '@/hooks/queries'
 import { ContextGauge } from '@/features/chat/ContextGauge'
+import { ConversationHeader } from '@/features/chat/ConversationHeader'
 import { ToolsModal } from '@/features/tools/ToolsModal'
 import { SuggestionsBar } from '@/features/tasks/SuggestionsBar'
 import { VoiceInput } from '@/features/voice/VoiceInput'
@@ -56,6 +59,14 @@ export function ChatView({
   const { data: messages, isLoading } = useMessages(workspaceId, conversationId)
   const { data: voice } = useVoiceCapabilities()
   const { data: models } = useModels()
+  const { data: conversations } = useConversations(workspaceId)
+  const { data: workspaces } = useWorkspaces()
+
+  // What is actually answering: the workspace's pin, or Auto when it has none.
+  const pinned = workspaces?.find((w) => w.id === workspaceId)?.preferred_model ?? null
+  const modelLabel = pinned
+    ? (models?.models.find((m) => m.id === pinned)?.display_name ?? pinned)
+    : 'Auto'
   const scopedDocumentIds = useWorkspaceStore((state) => state.scopedDocumentIds)
   const queryClient = useQueryClient()
   const upload = useUploadDocument(workspaceId)
@@ -216,8 +227,18 @@ export function ChatView({
     void handleSend()
   }
 
+  const conversation = conversations?.find((c) => c.id === conversationId) ?? null
+
   return (
     <div className="flex h-full flex-col">
+      {conversation && (
+        <ConversationHeader
+          workspaceId={workspaceId}
+          conversation={conversation}
+          modelLabel={modelLabel}
+        />
+      )}
+
       <div className="min-h-0 flex-1 overflow-y-auto px-4 py-6 sm:px-6">
         {!conversationId ? (
           <StartHere
