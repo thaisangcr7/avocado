@@ -9,7 +9,7 @@ that Ollama reports no cost at all.
 from __future__ import annotations
 
 import abc
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Awaitable, Callable
 from dataclasses import dataclass, field
 from typing import Any, Literal
 
@@ -40,6 +40,39 @@ class Usage:
     @property
     def total(self) -> int:
         return self.input_tokens + self.output_tokens
+
+
+@dataclass(frozen=True, slots=True)
+class ToolSchema:
+    """A tool the model may call, which *this* side runs.
+
+    Distinct from `server_tools`, which name tools the vendor hosts and
+    executes itself. These are ours: the model asks, we run it, we hand back
+    the result. The schema is passed to the model as the tool's owner wrote it.
+    """
+
+    name: str
+    description: str
+    input_schema: dict[str, Any] = field(default_factory=dict)
+
+
+@dataclass(slots=True)
+class ToolOutcome:
+    """What running one tool produced.
+
+    `is_error` means the tool ran and reported failure. That is told to the
+    model rather than raised, so it can try something else instead of treating
+    a failure as an answer.
+    """
+
+    text: str
+    is_error: bool = False
+
+
+# Given a tool name and its arguments, run it. Supplied by the caller, so a
+# provider executes tools without knowing whether they are local or remote —
+# which is what keeps a new integration out of this layer entirely.
+ToolExecutor = Callable[[str, dict[str, Any]], Awaitable[ToolOutcome]]
 
 
 @dataclass(slots=True)
@@ -111,6 +144,12 @@ class LLMProvider(abc.ABC):
     # question about capability and not about string-matching a vendor.
     server_tools: frozenset[str] = frozenset()
 
+    # Whether this vendor can be offered tools that we execute. False by
+    # default and declared true only where the loop is implemented, because a
+    # provider that accepted tools and never called them would have the model
+    # report an answer it had no way to reach.
+    supports_client_tools: bool = False
+
     @abc.abstractmethod
     def models(self) -> list[ModelSpec]:
         """Models this provider can serve, in preference order."""
@@ -125,12 +164,19 @@ class LLMProvider(abc.ABC):
         max_tokens: int = 4096,
         json_schema: dict[str, Any] | None = None,
         server_tools: list[str] | None = None,
+        tools: list[ToolSchema] | None = None,
+        execute_tool: ToolExecutor | None = None,
     ) -> CompletionResult:
         """Single-shot completion.
 
         `json_schema` constrains the output shape. `server_tools` names
         provider-hosted tools to offer — a provider that has none simply
         ignores them, so a caller never has to ask who it is talking to.
+
+        `tools` are tools this side runs, and `execute_tool` is how they are
+        run; both are ignored unless the provider declares
+        `supports_client_tools`. Callers check that flag rather than passing
+        tools hopefully, the same way `server_tools` is gated on capability.
         """
 
     @abc.abstractmethod

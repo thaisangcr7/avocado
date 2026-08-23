@@ -119,6 +119,7 @@ class _HealthTracked(LLMProvider):
         # with the base-class default — which for a capability means the
         # feature reports itself as unavailable everywhere.
         self.server_tools = inner.server_tools
+        self.supports_client_tools = inner.supports_client_tools
 
     def models(self) -> list[ModelSpec]:
         return self._inner.models()

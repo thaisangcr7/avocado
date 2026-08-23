@@ -24,10 +24,13 @@ from app.clients.llm.base import (
     LLMProvider,
     ModelSpec,
     StreamChunk,
+    ToolExecutor,
+    ToolOutcome,
+    ToolSchema,
     Usage,
     WebSource,
 )
-from app.core.errors import ProviderCredentialError, ProviderError
+from app.core.errors import AvocadoError, ProviderCredentialError, ProviderError
 from app.core.logging import get_logger
 
 log = get_logger(__name__)
@@ -110,6 +113,11 @@ SERVER_TOOLS: dict[str, dict[str, Any]] = {
 # a tool that keeps pausing would otherwise bill indefinitely.
 _MAX_PAUSE_RESUMES = 4
 
+# How many times the model may call a tool and be asked again within one turn.
+# A model that keeps calling tools would otherwise bill indefinitely; stopping
+# is reported through `stop_reason` rather than by returning silence.
+_MAX_TOOL_ROUNDS = 8
+
 
 def _web_sources_from(response: Any) -> list[WebSource]:
     """Pull the pages a search actually returned out of the response.
@@ -132,6 +140,62 @@ def _web_sources_from(response: Any) -> list[WebSource]:
             if url:
                 found.append(WebSource(title=getattr(result, "title", "") or url, url=url))
     return found
+
+
+async def _run_requested_tools(
+    response: Any,
+    client_tools: dict[str, ToolSchema],
+    execute: ToolExecutor,
+) -> list[dict[str, Any]]:
+    """Run each tool the model asked for and shape the results for the next turn.
+
+    Every `tool_use` block gets a `tool_result`, including the ones that fail:
+    the API rejects a turn whose tool calls were not all answered, and a model
+    told nothing about a failed call will simply assume it worked.
+
+    A tool that raises is reported to the model rather than propagated. The
+    request is answerable without that tool — badly, but answerable — and a
+    broken integration should not take the whole conversation down with it.
+    """
+    results: list[dict[str, Any]] = []
+    for block in getattr(response, "content", []) or []:
+        if getattr(block, "type", None) != "tool_use":
+            continue
+        name = getattr(block, "name", "")
+        if name not in client_tools:
+            # A tool we never offered. Answering the block keeps the turn
+            # valid; running something we cannot identify would not.
+            log.warning("tool_use_unknown", tool=name)
+            results.append(
+                {
+                    "type": "tool_result",
+                    "tool_use_id": block.id,
+                    "content": f"'{name}' is not available.",
+                    "is_error": True,
+                }
+            )
+            continue
+
+        arguments = getattr(block, "input", None)
+        if not isinstance(arguments, dict):
+            arguments = {}
+        try:
+            outcome = await execute(name, arguments)
+        except AvocadoError as exc:
+            log.warning("tool_execution_failed", tool=name, detail=exc.detail)
+            outcome = ToolOutcome(text=exc.detail, is_error=True)
+
+        results.append(
+            {
+                "type": "tool_result",
+                "tool_use_id": block.id,
+                # Carried verbatim. This is a tool's own text, which is data to
+                # be shown to the model, never instruction for this code.
+                "content": outcome.text,
+                "is_error": outcome.is_error,
+            }
+        )
+    return results
 
 
 def _classify(exc: anthropic.APIStatusError, action: str) -> ProviderError:
@@ -191,6 +255,8 @@ def _sanitize_schema(node: Any) -> Any:
 class AnthropicProvider(LLMProvider):
     name = "anthropic"
     server_tools = frozenset(SERVER_TOOLS)
+    # The loop in `generate` is what makes this true. Nothing else declares it.
+    supports_client_tools = True
 
     def __init__(self, api_key: str | None, *, timeout: float = 120.0) -> None:
         if not api_key:
@@ -209,6 +275,8 @@ class AnthropicProvider(LLMProvider):
         max_tokens: int = 4096,
         json_schema: dict[str, Any] | None = None,
         server_tools: list[str] | None = None,
+        tools: list[ToolSchema] | None = None,
+        execute_tool: ToolExecutor | None = None,
     ) -> CompletionResult:
         kwargs: dict[str, Any] = {
             "model": model,
@@ -222,15 +290,35 @@ class AnthropicProvider(LLMProvider):
                 "format": {"type": "json_schema", "schema": _sanitize_schema(json_schema)}
             }
 
-        tools = [SERVER_TOOLS[name] for name in (server_tools or []) if name in SERVER_TOOLS]
-        if tools:
-            kwargs["tools"] = tools
+        offered: list[dict[str, Any]] = [
+            SERVER_TOOLS[name] for name in (server_tools or []) if name in SERVER_TOOLS
+        ]
+        # Ours are declared alongside the vendor's. The model sees one list and
+        # does not distinguish them; which side runs each is our business.
+        client_tools = {t.name: t for t in (tools or [])} if execute_tool else {}
+        offered.extend(
+            {
+                "name": tool.name,
+                "description": tool.description,
+                "input_schema": tool.input_schema or {"type": "object", "properties": {}},
+            }
+            for tool in client_tools.values()
+        )
+        if offered:
+            kwargs["tools"] = offered
 
         started = time.perf_counter()
         history = list(kwargs["messages"])
         sources: list[WebSource] = []
+        # Text is collected from every round, not just the last. A model that
+        # says what it is about to look up and then answers would otherwise
+        # lose the first half — and a turn that ends still calling tools would
+        # return nothing at all.
+        said: list[str] = []
+        pauses = 0
+        tool_rounds = 0
         try:
-            for _ in range(_MAX_PAUSE_RESUMES + 1):
+            while True:
                 kwargs["messages"] = history
                 if max_tokens > _STREAM_THRESHOLD_TOKENS:
                     async with self._client.messages.stream(**kwargs) as stream:
@@ -239,13 +327,41 @@ class AnthropicProvider(LLMProvider):
                     response = await self._client.messages.create(**kwargs)
 
                 sources.extend(_web_sources_from(response))
+                spoken = "".join(b.text for b in response.content if b.type == "text")
+                if spoken:
+                    said.append(spoken)
+
                 # A server tool that runs long stops the turn with `pause_turn`
                 # rather than an error. Returning here would hand back a
                 # half-finished answer with nothing to say it was cut off, so
                 # the paused turn is appended and the model asked to continue.
-                if response.stop_reason != "pause_turn":
-                    break
-                history = [*history, {"role": "assistant", "content": response.content}]
+                if response.stop_reason == "pause_turn" and pauses < _MAX_PAUSE_RESUMES:
+                    pauses += 1
+                    history = [*history, {"role": "assistant", "content": response.content}]
+                    continue
+
+                # The model asked for a tool this side runs. Run them, hand the
+                # results back, and let it carry on with what it learned.
+                if (
+                    response.stop_reason == "tool_use"
+                    and execute_tool is not None
+                    and tool_rounds < _MAX_TOOL_ROUNDS
+                ):
+                    results = await _run_requested_tools(response, client_tools, execute_tool)
+                    # Nothing we could run. Continuing would repeat the same
+                    # request forever, so the turn ends and the stop reason
+                    # says why it is short.
+                    if not results:
+                        break
+                    tool_rounds += 1
+                    history = [
+                        *history,
+                        {"role": "assistant", "content": response.content},
+                        {"role": "user", "content": results},
+                    ]
+                    continue
+
+                break
         except anthropic.APIStatusError as exc:
             log.warning("anthropic_api_error", status=exc.status_code, model=model)
             raise _classify(exc, "request") from exc
@@ -257,7 +373,7 @@ class AnthropicProvider(LLMProvider):
         if response.stop_reason == "refusal":
             raise ProviderError("The model declined to answer this request.")
 
-        text = "".join(b.text for b in response.content if b.type == "text")
+        text = "\n\n".join(said)
         return CompletionResult(
             text=text,
             model=response.model,

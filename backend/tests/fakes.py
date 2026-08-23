@@ -17,6 +17,8 @@ from app.clients.llm.base import (
     LLMProvider,
     ModelSpec,
     StreamChunk,
+    ToolExecutor,
+    ToolSchema,
     Usage,
 )
 from app.clients.sandbox.base import Sandbox, SandboxDataset, SandboxLimits, SandboxResult
@@ -53,6 +55,9 @@ class FakeLLMProvider(LLMProvider):
     # Declared so tests can exercise the server-tool path. The real check is
     # capability, not vendor, which is exactly what this stands in for.
     server_tools = frozenset({"web_search", "web_fetch"})
+    # Stands in for a vendor that runs a tool loop, so the capability check the
+    # callers do has both answers available in tests.
+    supports_client_tools = True
 
     def __init__(self, responses: list[str] | None = None) -> None:
         self.responses = responses or []
@@ -74,6 +79,8 @@ class FakeLLMProvider(LLMProvider):
         max_tokens: int = 4096,
         json_schema: dict[str, Any] | None = None,
         server_tools: list[str] | None = None,
+        tools: list[ToolSchema] | None = None,
+        execute_tool: ToolExecutor | None = None,
     ) -> CompletionResult:
         self.calls.append(
             {
@@ -86,6 +93,10 @@ class FakeLLMProvider(LLMProvider):
                 # A fake that silently drops a new argument makes the caller
                 # look correct while the real provider never receives it.
                 "server_tools": list(server_tools or []),
+                # Same reasoning: a fake that drops these makes a caller look
+                # correct while the real provider is never offered the tools.
+                "tools": [t.name for t in (tools or [])],
+                "can_execute_tools": execute_tool is not None,
             }
         )
         text = self._next()

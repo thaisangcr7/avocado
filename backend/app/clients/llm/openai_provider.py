@@ -14,6 +14,8 @@ from app.clients.llm.base import (
     LLMProvider,
     ModelSpec,
     StreamChunk,
+    ToolExecutor,
+    ToolSchema,
     Usage,
 )
 from app.core.errors import ProviderCredentialError, ProviderError
@@ -114,6 +116,12 @@ class OpenAIProvider(LLMProvider):
         # which provider it reached, and the tool registry is what stops one
         # being offered where it cannot run.
         server_tools: list[str] | None = None,
+        # Accepted and ignored: no tool loop is implemented for this vendor,
+        # which is what `supports_client_tools = False` tells a caller. The
+        # parameter is part of the interface so a caller never has to know
+        # which provider it reached.
+        tools: list[ToolSchema] | None = None,
+        execute_tool: ToolExecutor | None = None,
     ) -> CompletionResult:
         kwargs: dict[str, Any] = {
             "model": model,
