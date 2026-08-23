@@ -127,7 +127,7 @@ describe('ChatView', () => {
 
   it('invites a first question when the thread is empty', () => {
     renderChat([])
-    expect(screen.getByText(/ask anything about this workspace/i)).toBeInTheDocument()
+    expect(screen.getByText(/ask anything about this space/i)).toBeInTheDocument()
   })
 
   it('keeps send disabled until something is typed', async () => {

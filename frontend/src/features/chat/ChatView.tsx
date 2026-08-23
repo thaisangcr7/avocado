@@ -262,7 +262,7 @@ export function ChatView({
         ) : (messages?.length ?? 0) === 0 && !isStreaming ? (
           <EmptyState
             icon={<span className="text-2xl">🥑</span>}
-            title="Ask anything about this workspace"
+            title="Ask anything about this Space"
             description="Answers are grounded in your uploaded documents, with citations you can check."
           />
         ) : (
@@ -483,7 +483,7 @@ function StartHere({
               Nothing to ask about yet
             </h2>
             <p className="text-sm leading-relaxed text-ink-muted text-balance">
-              Grounded answers come from files in this workspace. Start with demo data or
+              Grounded answers come from files in this Space. Start with demo data or
               upload your own documents to generate cited answers and computed analysis.
             </p>
           </div>
@@ -563,7 +563,7 @@ function StartHere({
     openings.push({
       label: 'Find a policy',
       hint: 'Cited answer',
-      question: 'What policies does this workspace define?',
+      question: 'What policies does this Space define?',
     })
     if (policyLike && /pto|leave|vacation|time.?off/i.test(policyLike.filename)) {
       openings.push({

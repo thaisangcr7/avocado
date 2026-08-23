@@ -14,7 +14,7 @@ import type { ReactNode } from 'react'
 import { useThemeStore, type ThemeChoice } from '@/stores/theme'
 import { cn } from '@/lib/utils'
 
-export type RailDestination = 'chat' | 'history' | 'spaces' | 'library'
+export type RailDestination = 'chat' | 'history' | 'presets' | 'spaces' | 'library'
 
 const THEME_ICON: Record<ThemeChoice, string> = { system: '◐', light: '☀', dark: '☾' }
 const NEXT_THEME: Record<ThemeChoice, ThemeChoice> = {
@@ -62,6 +62,12 @@ export function NavRail({
         icon="↺"
         active={active === 'history'}
         onClick={() => onNavigate('history')}
+      />
+      <RailButton
+        label="Presets"
+        icon="/"
+        active={active === 'presets'}
+        onClick={() => onNavigate('presets')}
       />
       <RailButton
         label="Spaces"

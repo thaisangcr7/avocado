@@ -3,12 +3,14 @@
  * chat in the center, and a right rail for Documents + Artifacts.
  */
 
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 
 import type { AnalysisRun, Document } from '@/api/types'
 import { AnalysisView } from '@/features/analysis/AnalysisView'
 import { ChatView } from '@/features/chat/ChatView'
 import { HistoryPage } from '@/features/history/HistoryPage'
+import { PresetsModal } from '@/features/presets/PresetsModal'
+import { useShortcuts } from '@/hooks/useShortcuts'
 import { DocumentPanel } from '@/features/documents/DocumentPanel'
 import { TaskResumePanel } from '@/features/tasks/TaskResumePanel'
 import { TeamSettings } from '@/features/teams/TeamSettings'
@@ -52,12 +54,29 @@ export function WorkspaceShell() {
   // History is a page rather than the threads column: finding something from
   // three weeks ago needs search and pagination, not a longer scroll.
   const [historyOpen, setHistoryOpen] = useState(false)
+  const [presetsOpen, setPresetsOpen] = useState(false)
+
   const [railWidth, setRailWidth] = useResizableWidth('avocado.rail_width', 420)
   const [rightView, setRightView] = useState<RightPanelView>('documents')
   // A question picked on the landing pane, held until the conversation it
   // will be asked in has been created.
   const [pendingQuestion, setPendingQuestion] = useState<string | null>(null)
   const startConversation = useCreateConversation(activeWorkspaceId ?? '')
+  // Defined once so the rail button and the keyboard shortcut cannot drift.
+  const newChat = useCallback(() => {
+    startConversation.mutate(undefined, {
+      onSuccess: (conversation) => {
+        setActiveConversationId(conversation.id)
+        setPendingQuestion(null)
+      },
+    })
+  }, [startConversation])
+
+  useShortcuts({
+    onNewChat: newChat,
+    onHistory: () => setHistoryOpen((open) => !open),
+    onPresets: () => setPresetsOpen(true),
+  })
 
   function openRight(view: RightPanelView) {
     setRightView(view)
@@ -95,17 +114,12 @@ export function WorkspaceShell() {
         }}
       />
 
+      {presetsOpen && <PresetsModal onClose={() => setPresetsOpen(false)} />}
+
       <div className="relative flex min-h-0 flex-1 overflow-hidden">
         <NavRail
           active={historyOpen ? 'history' : rightOpen ? 'library' : 'chat'}
-          onNewChat={() =>
-            startConversation.mutate(undefined, {
-              onSuccess: (conversation) => {
-                setActiveConversationId(conversation.id)
-                setPendingQuestion(null)
-              },
-            })
-          }
+          onNewChat={newChat}
           onNavigate={(destination) => {
             if (destination === 'chat') {
               setThreadsOpen(false)
@@ -115,6 +129,10 @@ export function WorkspaceShell() {
             }
             if (destination === 'history') {
               setHistoryOpen((open) => !open)
+              return
+            }
+            if (destination === 'presets') {
+              setPresetsOpen(true)
               return
             }
             if (destination === 'library') {
@@ -171,7 +189,7 @@ export function WorkspaceShell() {
         <main className="min-w-0 flex-1">
           {!workspace ? (
             <div className="flex h-full items-center justify-center text-sm text-ink-muted">
-              Create a workspace to begin.
+              Create a Space to begin.
             </div>
           ) : historyOpen ? (
             <HistoryPage
@@ -521,7 +539,7 @@ function WorkspaceSwitcher() {
   return (
     <div className="border-b border-border-subtle p-3">
       <label className="block">
-        <span className="sr-only">Workspace</span>
+        <span className="sr-only">Space</span>
         <select
           value={activeWorkspaceId ?? ''}
           onChange={(e) => setActiveWorkspace(e.target.value)}
@@ -569,7 +587,7 @@ function WorkspaceSwitcher() {
           onClick={() => setCreating(true)}
           className="mt-2 text-xs font-medium text-accent-strong hover:underline"
         >
-          + New workspace
+          + New Space
         </button>
       )}
     </div>

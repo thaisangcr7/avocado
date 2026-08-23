@@ -10,7 +10,7 @@ Plan and estimates: [`workspaces-parity.md`](workspaces-parity.md).
 
 ## Current phase
 
-**Phase C is done. Next unstarted block is Phase D — shell and Spaces polish.**
+**Phase D is done. Next unstarted block is Phase E — schedules.**
 
 | Step | State |
 |---|---|
@@ -31,8 +31,8 @@ Plan and estimates: [`workspaces-parity.md`](workspaces-parity.md).
 | A — Artifacts | ✅ done |
 | B — Presets and slash commands | ✅ done |
 | C — History and conversation management | ✅ done |
-| D — Shell and Spaces polish | 🔨 next |
-| E — Schedules | ⬜ not started |
+| D — Shell and Spaces polish | ✅ done |
+| E — Schedules | 🔨 next |
 | E2 — Tools and integrations (MCP) | ✅ done |
 | E3 — Conversation instrumentation | 🔨 gauge done; enhance + welcome left |
 | F — Collaboration | ⬜ not started |
@@ -94,6 +94,7 @@ Recorded so they are not relitigated in a later session.
 
 Newest first. One line per shipped increment.
 
+- **Phase D** · Presets reachable from the rail, not only the composer. Keyboard shortcuts (⇧N, ⇧H, ⇧P) that refuse to fire while someone is typing — these are bare letters, so without that guard a capital N in the composer would start a new conversation and lose the question. "Workspace" reads as "Space" in the UI; `workspace_id` is untouched. The theme switcher and the three-store library rail were already done, so this phase was smaller than the plan's estimate. 5 tests.
 - **Phase C** · History as a page rather than a longer sidebar scroll: search, filter, numbered pagination, inline rename, pin, archive, download, delete — and a message count that comes back in the same query as a correlated scalar, since a list page is exactly where an N+1 bites. No status chip: every chat is complete the moment it stops, so "Completed" on every row would be decoration. Export is markdown with its citations, fetched through the authenticated client rather than a bare link, which would have 401'd silently. Plus message feedback — two values rather than a scale, one row per reader, showing your own rating and never someone else's. 21 backend tests, 9 frontend.
 - **Phase B** · Presets: named, shareable system prompts. Org-scoped, because how a team writes does not change between workspaces. A message names one by slug and never by prompt text — the instruction is read from the row, so a client cannot post its own system prompt and drop the honesty rules with it. The preset goes *before* the built-in prompt, never after, so "always answer confidently" cannot cancel the citation rules; there is a test on the ordering, not just the presence. The turn records which preset and version it ran under, since editing one would otherwise rewrite what a past answer was told. Wired into the streamed path as well as the plain POST — the stream is what the UI actually uses, and a preset that worked only on the POST would have looked built and done nothing. 31 tests.
 - **E2-3 health** · One probe per connected server answers both open questions at once: whether it is answering, and what its schemas really cost. Cached for a minute and shared with the answer path, so showing health does not make the next question slower, and bounded by a short timeout so a hanging server cannot hold the picker. The card now distinguishes connected from reachable — an unreachable server says so instead of looking fine with a switch that quietly does nothing — and `context_cost_tokens` is measured from the real `tools/list` rather than taken from whatever configuration guessed.
