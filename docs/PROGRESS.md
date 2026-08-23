@@ -15,15 +15,16 @@ What is left is the rest of G — a What's New feed and an attestation page,
 both of which need something real to say — and Phase F (collaboration), which
 the plan itself says to do last, or not at all.**
 
-| Step | State |
+### What is blocked, and on what
+
+Everything left needs something an agent cannot supply.
+
+| Item | Blocked on |
 |---|---|
-| A1 · `artifacts` table + migration | ✅ done |
-| A2 · Repository, scoped by workspace | ✅ done |
-| A3 · Service + resource schemas | ✅ done |
-| A4 · Endpoints | ✅ done |
-| A5 · Model emits artifacts | ✅ done |
-| A6 · Frontend panel (sandboxed iframe) | ✅ done, and reachable |
-| A7 · Version history UI | ✅ done |
+| G · What's New feed | Release notes someone has to write. A feed with nothing true in it is worse than no feed. |
+| G · Attestation page | A real compliance position. Without one this is theatre. |
+| G · Feedback link, support footer | A destination — an address or a ticket queue that exists. |
+| F · Collaboration | A decision. The plan says do it last or not at all: 15–20 days, and it changes the product from single-player to multi-human threads. |
 
 ---
 

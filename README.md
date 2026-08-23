@@ -128,7 +128,11 @@ Reload the page and it is still there: the report is saved on the message.
 | 4 — Team Mastermind | Projects/tasks, suggestions, task resume, knowledge map | ✅ Done |
 | 5 — UX polish + scale | First-open UX, report templates, bundle/perf, load test | In progress |
 
-**412 backend tests, 98 frontend tests**, all green in CI on every push.
+**559 backend tests, 174 frontend tests**, all green in CI on every push.
+
+Workspace-platform parity work (presets, history, schedules, tools over MCP,
+artifacts) is tracked separately in [`docs/PROGRESS.md`](docs/PROGRESS.md),
+which is the file to read first when picking this up cold.
 
 ## Current plan (no-cost, UX-first)
 
