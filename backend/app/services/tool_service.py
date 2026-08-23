@@ -9,14 +9,16 @@ be discovered as gradually worse answers.
 from __future__ import annotations
 
 import uuid
+from dataclasses import dataclass
 
 from app.clients.llm.router import ModelRouter, TaskType
+from app.core.config import McpServerConfig
 from app.core.errors import AvocadoError, NotFoundError, ValidationError
 from app.core.logging import get_logger
 from app.models.enums import ToolKind
 from app.repositories.tools import ConversationToolRepository
 from app.schemas.tools import ToolResponse, ToolSelectionResponse
-from app.services.tool_catalogue import BUILTIN_TOOLS, BY_SLUG, ToolDefinition
+from app.services.tool_catalogue import ToolDefinition, catalogue_for
 
 log = get_logger(__name__)
 
@@ -26,26 +28,43 @@ log = get_logger(__name__)
 TOOL_BUDGET_WARN_FRACTION = 0.1
 
 
-def _runnable(tool: ToolDefinition, hosted: frozenset[str]) -> bool:
+@dataclass(frozen=True, slots=True)
+class _Capabilities:
+    """What the model that would answer right now can actually do."""
+
+    hosted: frozenset[str] = frozenset()
+    client_tools: bool = False
+
+
+def _runnable(tool: ToolDefinition, can: _Capabilities) -> bool:
     """Whether the answering model's vendor can actually run this tool.
 
-    Web search is hosted by the vendor, so a workspace pinned to one without it
-    would switch the tool on and get nothing. Reporting it as off there is the
-    difference between a control that is unavailable and one that lies.
+    Two ways a tool can be switched on and do nothing, and both are reported as
+    off instead. Web search is hosted by the vendor, so a workspace pinned to
+    one without it would get silence. An MCP tool needs a vendor that runs a
+    tool loop at all, which is a different capability and a separate check.
 
-    The provider declares what it hosts; nothing here matches on a vendor name.
+    The provider declares both; nothing here matches on a vendor name.
     """
+    if tool.kind is ToolKind.MCP and not can.client_tools:
+        return False
     if not tool.hosted_tool:
         return True
-    return tool.hosted_tool in hosted
+    return tool.hosted_tool in can.hosted
 
 
 class ToolService:
     def __init__(
-        self, *, selections: ConversationToolRepository, router: ModelRouter | None = None
+        self,
+        *,
+        selections: ConversationToolRepository,
+        router: ModelRouter | None = None,
+        servers: list[McpServerConfig] | None = None,
     ) -> None:
         self._selections = selections
         self._router = router
+        self._catalogue = catalogue_for(servers or [])
+        self._by_slug = {tool.slug: tool for tool in self._catalogue}
 
     async def _require_conversation(
         self, conversation_id: uuid.UUID, workspace_id: uuid.UUID
@@ -54,21 +73,24 @@ class ToolService:
         if not await self._selections.belongs_to_workspace(conversation_id, workspace_id):
             raise NotFoundError("Conversation not found.")
 
-    def _hosted_tools(self, preferred_model: str | None) -> frozenset[str]:
-        """Server-side tools the model that would answer right now can run.
+    def _capabilities(self, preferred_model: str | None) -> _Capabilities:
+        """What the model that would answer right now can run.
 
-        An unresolvable model reports none rather than guessing, so a tool is
+        An unresolvable model reports nothing rather than guessing, so a tool is
         shown as unavailable instead of promising something unverified.
         """
         if self._router is None:
-            return frozenset()
+            return _Capabilities()
         try:
             provider, _ = self._router.resolve(
                 task=TaskType.SYNTHESIS, preferred_model=preferred_model
             )
         except AvocadoError:
-            return frozenset()
-        return provider.server_tools
+            return _Capabilities()
+        return _Capabilities(
+            hosted=provider.server_tools,
+            client_tools=provider.supports_client_tools,
+        )
 
     async def catalogue(
         self,
@@ -80,7 +102,7 @@ class ToolService:
         """Every tool, with which are on for this conversation and what they cost."""
         await self._require_conversation(conversation_id, workspace_id)
         choices = await self._selections.choices(conversation_id)
-        hosted = self._hosted_tools(preferred_model)
+        can = self._capabilities(preferred_model)
 
         # No decisions recorded means the defaults are in force. Once anything
         # has been chosen the recorded set is authoritative, including when it
@@ -88,7 +110,7 @@ class ToolService:
         if choices:
             enabled = {slug for slug, on in choices.items() if on}
         else:
-            enabled = {t.slug for t in BUILTIN_TOOLS if t.enabled_by_default}
+            enabled = {t.slug for t in self._catalogue if t.enabled_by_default}
 
         tools = [
             ToolResponse(
@@ -98,11 +120,11 @@ class ToolService:
                 category=tool.category,
                 kind=tool.kind,
                 context_cost_tokens=tool.context_cost_tokens,
-                enabled=tool.slug in enabled and _runnable(tool, hosted),
+                enabled=tool.slug in enabled and _runnable(tool, can),
                 connected=tool.kind is not ToolKind.PLACEHOLDER,
                 runs_on=sorted(tool.providers),
             )
-            for tool in BUILTIN_TOOLS
+            for tool in self._catalogue
         ]
 
         return ToolSelectionResponse(
@@ -121,17 +143,17 @@ class ToolService:
     ) -> ToolSelectionResponse:
         await self._require_conversation(conversation_id, workspace_id)
 
-        unknown = [slug for slug in slugs if slug not in BY_SLUG]
+        unknown = [slug for slug in slugs if slug not in self._by_slug]
         if unknown:
             raise NotFoundError(f"Unknown tool: {unknown[0]}.")
 
         # A placeholder is declared but not wired to anything. Letting one be
         # switched on would put a tool in front of the model that reports
         # success it never had, which is worse than not offering it.
-        not_connected = [slug for slug in slugs if BY_SLUG[slug].kind is ToolKind.PLACEHOLDER]
+        not_connected = [slug for slug in slugs if self._by_slug[slug].kind is ToolKind.PLACEHOLDER]
         if not_connected:
             raise ValidationError(
-                f"'{BY_SLUG[not_connected[0]].name}' is not connected yet, so it "
+                f"'{self._by_slug[not_connected[0]].name}' is not connected yet, so it "
                 "cannot be switched on."
             )
 
@@ -140,7 +162,7 @@ class ToolService:
         wanted = set(slugs)
         await self._selections.replace(
             conversation_id=conversation_id,
-            choices={tool.slug: tool.slug in wanted for tool in BUILTIN_TOOLS},
+            choices={tool.slug: tool.slug in wanted for tool in self._catalogue},
         )
         await self._selections.commit()
         log.info("tools_selected", conversation_id=str(conversation_id), count=len(slugs))

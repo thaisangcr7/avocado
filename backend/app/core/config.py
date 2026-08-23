@@ -8,22 +8,78 @@ forgotten `.env` edit fails at boot instead of shipping a known secret.
 
 from __future__ import annotations
 
+import os
+import re
 import secrets
 from functools import lru_cache
 from typing import Literal
 from urllib.parse import urlparse
 
-from pydantic import Field, field_validator, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 PLACEHOLDER = "CHANGE_ME"
 
 AppEnv = Literal["development", "test", "staging", "production"]
+# Mirrors `models.enums.ToolCategory`. Spelled out rather than imported: the
+# models package pulls this module back in, and a config file that cannot be
+# read without the ORM is a worse trade than a duplicated list of five words.
+# `test_config.py` fails if the two ever drift.
+ToolCategoryName = Literal["analytics", "engineering", "knowledge", "admin", "data"]
 StorageBackend = Literal["local", "s3"]
 EmbeddingProvider = Literal["voyage", "openai", "hash"]
 SandboxBackend = Literal["docker", "http", "disabled"]
 SttProvider = Literal["deepgram", "disabled"]
 LLMProviderName = Literal["anthropic", "openai", "ollama"]
+
+
+# Slugs become part of the tool name the model is shown, and that name is
+# constrained to letters, digits, underscore and dash by the vendor APIs.
+_SLUG_PATTERN = re.compile(r"^[a-z0-9][a-z0-9-]{0,38}[a-z0-9]$")
+
+
+class McpServerConfig(BaseModel):
+    """One MCP server an operator has connected.
+
+    Declared as JSON in `MCP_SERVERS`. The point of the registry taking this
+    shape is that a new integration is a config row: no code changes, no
+    migration, no deployment of this codebase at all.
+
+    `auth_ref` is the *name* of an environment variable, never a credential.
+    Putting the secret here would put it in a settings object that is logged on
+    boot, dumped by the debug endpoint, and copied into every worker.
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    slug: str
+    name: str
+    description: str = ""
+    category: ToolCategoryName = "knowledge"
+    url: str
+    auth_ref: str | None = None
+    # What offering this server's tools adds to a request. Measured once the
+    # server is connected; the default is a placeholder that errs high, so an
+    # unmeasured server overstates rather than understates its cost.
+    context_cost_tokens: int = Field(default=500, ge=0, le=100_000)
+
+    @field_validator("slug")
+    @classmethod
+    def _validate_slug(cls, value: str) -> str:
+        if not _SLUG_PATTERN.match(value):
+            raise ValueError(
+                f"MCP server slug '{value}' must be lowercase letters, digits and "
+                "dashes, and is what the model sees as part of the tool name."
+            )
+        return value
+
+    @field_validator("url")
+    @classmethod
+    def _validate_url(cls, value: str) -> str:
+        parsed = urlparse(value.strip())
+        if parsed.scheme not in {"http", "https"} or not parsed.netloc:
+            raise ValueError("An MCP server url must be an absolute http(s) URL.")
+        return value.strip()
 
 
 class Settings(BaseSettings):
@@ -120,6 +176,15 @@ class Settings(BaseSettings):
 
     # --- Uploads -------------------------------------------------------
     max_upload_mb: int = Field(default=25, ge=1, le=500)
+
+    # --- Tools / MCP ---------------------------------------------------
+    # Every integration beyond the built-ins arrives here, as JSON:
+    #   MCP_SERVERS='[{"slug":"wiki","name":"Wiki","url":"https://...",
+    #                  "auth_ref":"WIKI_MCP_TOKEN","category":"knowledge"}]'
+    # `auth_ref` names the variable holding the token. The token itself is
+    # read at call time and never stored in this object.
+    mcp_servers: list[McpServerConfig] = Field(default_factory=list)
+    mcp_timeout_seconds: float = Field(default=30.0, gt=0, le=120)
 
     # --- Tracing ---------------------------------------------------------
     # Off by default: a tracing stack that cannot reach its collector must
@@ -252,6 +317,7 @@ class Settings(BaseSettings):
             )
         if self.stt_provider == "deepgram" and not self.deepgram_api_key:
             raise ValueError("STT_PROVIDER=deepgram requires DEEPGRAM_API_KEY.")
+        self._check_mcp_servers()
         if self.storage_backend == "s3" and not (
             self.s3_access_key_id and self.s3_secret_access_key
         ):
@@ -259,6 +325,37 @@ class Settings(BaseSettings):
                 "STORAGE_BACKEND=s3 requires S3_ACCESS_KEY_ID and S3_SECRET_ACCESS_KEY."
             )
         return self
+
+    def _check_mcp_servers(self) -> None:
+        """A tool server that cannot be reached safely is a boot-time error.
+
+        Each of these is silent at runtime if left to be discovered: a
+        duplicate slug shadows another integration, a credential named but
+        unset produces an unauthenticated call, and plaintext puts a bearer
+        token on the wire.
+        """
+        seen: set[str] = set()
+        for server in self.mcp_servers:
+            if server.slug in seen:
+                raise ValueError(f"MCP_SERVERS declares '{server.slug}' more than once.")
+            seen.add(server.slug)
+
+            if server.auth_ref and not os.environ.get(server.auth_ref):
+                raise ValueError(
+                    f"MCP server '{server.slug}' names {server.auth_ref} as its "
+                    "credential, but that variable is unset."
+                )
+
+            # Loopback is exempt: a server on this host has no network hop to
+            # eavesdrop on, and requiring a certificate for it would only push
+            # people towards disabling verification.
+            host = (urlparse(server.url).hostname or "").lower()
+            local = host in {"localhost", "127.0.0.1", "::1"}
+            if self.is_production and not server.url.startswith("https://") and not local:
+                raise ValueError(
+                    f"MCP server '{server.slug}' must use https outside development: "
+                    "its requests carry a bearer token."
+                )
 
 
 @lru_cache

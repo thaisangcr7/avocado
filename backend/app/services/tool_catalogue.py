@@ -15,9 +15,13 @@ should be a config change, not a code change.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 
+from app.core.config import McpServerConfig
+from app.core.logging import get_logger
 from app.models.enums import ToolCategory, ToolKind
+
+log = get_logger(__name__)
 
 
 @dataclass(frozen=True, slots=True)
@@ -153,3 +157,54 @@ BUILTIN_TOOLS: tuple[ToolDefinition, ...] = (
 )
 
 BY_SLUG = {tool.slug: tool for tool in BUILTIN_TOOLS}
+
+
+def catalogue_for(servers: list[McpServerConfig]) -> tuple[ToolDefinition, ...]:
+    """The built-ins, plus whatever the operator has connected.
+
+    A configured server whose slug matches a placeholder **replaces** it, which
+    is the promise the `kind` column was added for: connecting the wiki is
+    setting `MCP_SERVERS`, not editing this file. The placeholder's name,
+    description and category carry over where the configuration does not
+    override them, so an existing card becomes live rather than being
+    duplicated by a second one.
+
+    A slug matching a real built-in is ignored. Those are served in-process and
+    a remote server claiming the name would shadow working code — and the
+    catalogue is not a place to let configuration override behaviour.
+    """
+    configured = {server.slug: server for server in servers}
+    out: list[ToolDefinition] = []
+
+    for tool in BUILTIN_TOOLS:
+        server = configured.pop(tool.slug, None)
+        if server is None or tool.kind is not ToolKind.PLACEHOLDER:
+            if server is not None:
+                log.warning("mcp_server_ignored", server=server.slug, reason="builtin_exists")
+            out.append(tool)
+            continue
+        out.append(
+            replace(
+                tool,
+                name=server.name or tool.name,
+                description=server.description or tool.description,
+                category=ToolCategory(server.category),
+                kind=ToolKind.MCP,
+                context_cost_tokens=server.context_cost_tokens,
+            )
+        )
+
+    # Anything left is an integration the catalogue never anticipated, which is
+    # the ordinary case once this is used for real.
+    out.extend(
+        ToolDefinition(
+            slug=server.slug,
+            name=server.name,
+            description=server.description or "Connected over MCP.",
+            category=ToolCategory(server.category),
+            kind=ToolKind.MCP,
+            context_cost_tokens=server.context_cost_tokens,
+        )
+        for server in configured.values()
+    )
+    return tuple(out)

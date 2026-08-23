@@ -24,6 +24,7 @@ from app.clients.llm.router import ModelRouter, ProviderRegistry
 from app.clients.sandbox.factory import build_limits, build_sandbox
 from app.clients.storage.factory import build_storage_client
 from app.clients.stt.factory import build_transcription_client
+from app.clients.tools.registry import McpServers
 from app.core.config import Settings, get_settings
 from app.core.logging import configure_logging, get_logger
 from app.core.tracing import instrument_app, instrument_engine, setup_tracing
@@ -137,6 +138,10 @@ async def lifespan(app: FastAPI):  # type: ignore[no-untyped-def]
     app.state.sandbox = build_sandbox(settings)
     app.state.sandbox_limits = build_limits(settings)
     app.state.transcriber = build_transcription_client(settings)
+    # One per process: each client holds a negotiated MCP session, and
+    # re-handshaking per request would spend a round trip to learn what the
+    # last one already knew.
+    app.state.mcp_servers = McpServers(settings.mcp_servers, timeout=settings.mcp_timeout_seconds)
     rls_enforced, rls_detail = await verify_enforcement(engine)
     if settings.is_production and not rls_enforced:
         # Silent by nature: policies can be enabled, forced, and completely

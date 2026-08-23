@@ -279,8 +279,16 @@ def get_artifact_service(artifacts: ArtifactsDep, router: RouterDep) -> Artifact
 ArtifactServiceDep = Annotated[ArtifactService, Depends(get_artifact_service)]
 
 
-def get_tool_service(selections: ConversationToolsDep, router: RouterDep) -> ToolService:
-    return ToolService(selections=selections, router=router)
+def get_tool_service(
+    request: Request, selections: ConversationToolsDep, router: RouterDep
+) -> ToolService:
+    # From app state, not the settings singleton, so the registry and the
+    # answer path always read the same list — a picker built from one set of
+    # servers and a turn executed against another is the exact disagreement
+    # this whole surface exists to avoid.
+    return ToolService(
+        selections=selections, router=router, servers=request.app.state.mcp_servers.configs
+    )
 
 
 ToolServiceDep = Annotated[ToolService, Depends(get_tool_service)]
@@ -476,6 +484,7 @@ def get_chat_service(
         messages=messages,
         documents=documents,
         tools=tools,
+        servers=request.app.state.mcp_servers,
         rag=RAGService(chunks=chunks, embeddings=embeddings, router=router),
         analysis=AnalysisService(
             runs=runs,

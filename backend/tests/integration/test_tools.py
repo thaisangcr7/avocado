@@ -158,3 +158,87 @@ async def test_a_tool_the_answering_model_cannot_host_reads_as_off(client, accou
         assert web["runs_on"] == ["anthropic"]
     finally:
         app.state.registry = original
+
+
+async def test_a_configured_server_becomes_a_tool_that_can_be_switched_on(client, account, app):
+    """The promise the registry was built on: connecting an integration is a
+    config row. No migration, no code change, no deployment of this codebase.
+    """
+    from app.clients.tools.registry import McpServers
+    from app.core.config import McpServerConfig
+
+    original = app.state.mcp_servers
+    app.state.mcp_servers = McpServers(
+        [
+            McpServerConfig(
+                slug="wiki",
+                name="Confluence",
+                description="Our knowledge base.",
+                url="https://wiki.example.com/mcp",
+                context_cost_tokens=390,
+            )
+        ]
+    )
+    try:
+        conversation_id = await conversation(client, account)
+        listed = (
+            await client.get(path(account, conversation_id), headers=account["headers"])
+        ).json()
+        wiki = next(t for t in listed["tools"] if t["slug"] == "wiki")
+
+        # The placeholder card is now live rather than a second card appearing.
+        assert wiki["kind"] == "mcp"
+        assert wiki["connected"] is True
+        assert wiki["name"] == "Confluence"
+        assert len([t for t in listed["tools"] if t["slug"] == "wiki"]) == 1
+        # Connected is not the same as on: an operator wiring up a server must
+        # not silently start sending every conversation's questions to it.
+        assert wiki["enabled"] is False
+
+        response = await client.put(
+            path(account, conversation_id),
+            json={"slugs": ["wiki"]},
+            headers=account["headers"],
+        )
+        assert response.status_code == 200, "a connected server must be switchable on"
+
+        after = next(t for t in response.json()["tools"] if t["slug"] == "wiki")
+        assert after["enabled"] is True
+        assert response.json()["context_cost_tokens"] >= 390
+    finally:
+        app.state.mcp_servers = original
+
+
+async def test_an_mcp_tool_reads_as_off_where_the_model_runs_no_tool_loop(client, account, app):
+    """The same honesty as web search, for a different capability: a vendor
+    with no tool loop would leave the switch on and the tool never called."""
+    from app.clients.llm.router import ProviderRegistry
+    from app.clients.tools.registry import McpServers
+    from app.core.config import McpServerConfig
+    from tests.fakes import FakeLLMProvider
+
+    class NoToolLoop(FakeLLMProvider):
+        supports_client_tools = False
+
+    registry = ProviderRegistry(app.state.settings)
+    registry.register(NoToolLoop(), make_default=True)
+    original_registry, original_servers = app.state.registry, app.state.mcp_servers
+    app.state.registry = registry
+    app.state.mcp_servers = McpServers(
+        [McpServerConfig(slug="wiki", name="Wiki", url="https://wiki.example.com/mcp")]
+    )
+    try:
+        conversation_id = await conversation(client, account)
+        await client.put(
+            path(account, conversation_id),
+            json={"slugs": ["wiki"]},
+            headers=account["headers"],
+        )
+        body = (await client.get(path(account, conversation_id), headers=account["headers"])).json()
+        wiki = next(t for t in body["tools"] if t["slug"] == "wiki")
+
+        assert wiki["enabled"] is False, "it cannot run here, so it must not read as on"
+        assert wiki["connected"] is True
+    finally:
+        app.state.registry = original_registry
+        app.state.mcp_servers = original_servers

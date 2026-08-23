@@ -8,11 +8,12 @@ from collections.abc import AsyncIterator
 
 from app.clients.llm.base import ChatMessage as LLMMessage
 from app.clients.llm.router import ModelRouter, TaskType
+from app.clients.tools.registry import McpServers
 from app.core.errors import AvocadoError, NotFoundError
 from app.core.logging import get_logger
 from app.models.conversations import Conversation, Message
 from app.models.documents import Document
-from app.models.enums import DocumentType, MessageRole
+from app.models.enums import DocumentType, MessageRole, ToolKind
 from app.repositories.conversations import ConversationRepository, MessageRepository
 from app.repositories.documents import DocumentRepository
 from app.repositories.tools import ConversationToolRepository
@@ -26,7 +27,8 @@ from app.schemas.chat import (
 from app.services.analysis_service import AnalysisService
 from app.services.rag_service import SYSTEM_PROMPT, RAGService
 from app.services.report_service import ReportService
-from app.services.tool_catalogue import BY_SLUG
+from app.services.tool_catalogue import BY_SLUG, catalogue_for
+from app.services.tool_runner import ToolRunner
 from app.services.usage_service import UsageService
 
 log = get_logger(__name__)
@@ -83,11 +85,13 @@ class ChatService:
         router: ModelRouter,
         usage: UsageService,
         tools: ConversationToolRepository | None = None,
+        servers: McpServers | None = None,
     ) -> None:
         self._conversations = conversations
         self._messages = messages
         self._documents = documents
         self._tools = tools
+        self._servers = servers
         self._rag = rag
         self._analysis = analysis
         self._report = report
@@ -179,6 +183,8 @@ class ChatService:
                 preferred_model=preferred_model,
                 document_ids=payload.document_ids or None,
                 web_search=await self._web_search_enabled(conversation_id),
+                tools=ToolRunner(self._servers) if self._servers else None,
+                tool_slugs=await self._mcp_servers_enabled(conversation_id),
             )
         except AvocadoError as exc:
             # The user's turn genuinely happened, so the question stays in the
@@ -238,6 +244,23 @@ class ChatService:
         if choices:
             return choices.get(WEB_SEARCH_SLUG, False)
         return BY_SLUG[WEB_SEARCH_SLUG].enabled_by_default
+
+    async def _mcp_servers_enabled(self, conversation_id: uuid.UUID) -> list[str]:
+        """Which connected servers this conversation has switched on.
+
+        Follows the same default rule the picker shows, so the answer path and
+        the switch a user looked at never disagree. Nothing is enabled by
+        default here: an operator connecting a server should not silently start
+        sending every conversation's questions to it.
+        """
+        if self._tools is None or self._servers is None:
+            return []
+        catalogue = catalogue_for(self._servers.configs)
+        remote = {tool.slug for tool in catalogue if tool.kind is ToolKind.MCP}
+        if not remote:
+            return []
+        choices = await self._tools.choices(conversation_id)
+        return sorted(slug for slug in remote if choices.get(slug, False))
 
     async def _record_failure(
         self, conversation_id: uuid.UUID, workspace_id: uuid.UUID, detail: str

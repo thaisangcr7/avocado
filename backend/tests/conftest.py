@@ -44,6 +44,7 @@ from app.clients.embeddings.providers import HashingEmbeddingProvider  # noqa: E
 from app.clients.llm.router import ModelRouter, ProviderRegistry  # noqa: E402
 from app.clients.sandbox.factory import build_limits  # noqa: E402
 from app.clients.storage.local import LocalStorageClient  # noqa: E402
+from app.clients.tools.registry import McpServers  # noqa: E402
 from app.core.config import get_settings  # noqa: E402
 from app.core.logging import configure_logging  # noqa: E402
 from app.db.base import Base  # noqa: E402
@@ -142,6 +143,7 @@ def apply_test_doubles(  # noqa: PLR0913
     state.sandbox = fake_sandbox
     state.sandbox_limits = build_limits(settings)
     state.transcriber = fake_stt
+    state.mcp_servers = McpServers(settings.mcp_servers)
     state.redis = None
     state.arq_pool = None
     state.schedule_ingest = build_ingest_scheduler(application)

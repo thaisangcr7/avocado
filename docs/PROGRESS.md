@@ -10,8 +10,9 @@ Plan and estimates: [`workspaces-parity.md`](workspaces-parity.md).
 
 ## Current phase
 
-**E2 has a working MCP client. Wiring a configured server into the catalogue
-and the answer path is what turns a placeholder real.**
+**E2 is connected end to end: an MCP server declared in `MCP_SERVERS` becomes
+a tool in the picker and a tool the model can call. What is left is showing a
+connected server's health in the UI, and measuring real context costs.**
 
 | Step | State |
 |---|---|
@@ -34,7 +35,7 @@ and the answer path is what turns a placeholder real.**
 | C — History and conversation management | ⬜ not started |
 | D — Shell and Spaces polish | ⬜ not started |
 | E — Schedules | ⬜ not started |
-| E2 — Tools and integrations (MCP) | 🔨 registry, modal and MCP client done; execution next |
+| E2 — Tools and integrations (MCP) | ✅ registry, modal, MCP client and execution; health UI left |
 | E3 — Conversation instrumentation | 🔨 gauge done; enhance + welcome left |
 | F — Collaboration | ⬜ not started |
 | G — Enterprise trim | ⬜ not started |
@@ -55,8 +56,25 @@ Recorded so they are not relitigated in a later session.
 - **Tools arrive as MCP, not bespoke connectors.** One protocol adapter, then
   each integration is a server and a config row. Seventeen hand-written
   connectors is the wrong shape of work for one person.
+- **A connected system is not a document.** MCP tools take the same path web
+  search does — the no-hits path only — so a grounded answer's citations keep
+  meaning "from your documents". The prompt tells the model to name the system
+  and say it did not come from their uploads.
+- **A tool's output is data, never instruction.** It is written by whoever runs
+  that server. Nothing in the client parses it for anything that decides what
+  the code does, and the prompt says so for the model.
 - **Tools are metered.** Each enabled tool spends context whether or not it is
   called, so the cost is measured, shown, and warned about — never silent.
+
+---
+
+## Known gaps
+
+- A server that is unreachable is logged and its tools are quietly not offered.
+  The turn survives, which is right, but the user sees a tool switched on with
+  no sign it did not run. The picker should show a connected server's health.
+- `context_cost_tokens` for a configured server is whatever the config says,
+  defaulting to 500. It should be measured from the real `tools/list`.
 
 ---
 
@@ -75,6 +93,7 @@ Recorded so they are not relitigated in a later session.
 
 Newest first. One line per shipped increment.
 
+- **E2-3 connected** · `MCP_SERVERS` is now the whole delivery mechanism: a JSON row declares a server, and a slug matching a placeholder upgrades that card rather than adding a second one. `auth_ref` names the environment variable holding the credential, never the credential — and a named variable that is unset, a duplicate slug, or plaintext in production are all boot-time refusals rather than call-time surprises. Tools are qualified by server (`wiki__search`) so two servers offering `search` stay apart. A server that is down costs its own tools and not the turn. 25 tests.
 - **E2-3 loop** · The model can now call a tool this side runs. `generate` takes tool schemas and an executor; the Anthropic adapter loops on `tool_use` and hands results back, capped at eight rounds so a model that keeps calling cannot bill indefinitely. Every call is answered including the ones that fail — the API rejects a turn that leaves one open, and a model told nothing about a failure assumes it worked. A vendor without the loop declares `supports_client_tools = False` rather than accepting tools and ignoring them. Still not reachable by a user: no server is configured yet.
 - **E2-3 client** · An MCP client over Streamable HTTP, hand-written rather than pulled from the SDK: a client needs `initialize`, `tools/list` and `tools/call`, and the SDK brings a server framework and a stdio transport this application has no use for. Handshakes once, carries the session, and keeps a hostile server from exhausting either the process or the context window — response bytes, listing pages and result text are all capped. Twelve tests against a fake server; nothing is wired to it yet.
 - **A-fix** · The Phase A viewer was built but wired to nothing — no user could open an artifact. Surfaced in the right rail and renamed `ArtifactViewer`, because an unrelated `ArtifactPanel` already held that name. Verified in a browser, not just by tests.
