@@ -59,3 +59,44 @@ def test_the_fake_does_not_drift_from_the_real_thing(implementation):
         f"{implementation.__name__}.generate accepts {sorted(implemented - contract)}, "
         "which the interface does not define."
     )
+
+
+def test_the_health_wrapper_forwards_capabilities_it_does_not_own():
+    """`_HealthTracked` wraps every provider built from configuration.
+
+    It subclasses the interface, so any class attribute it forgets to forward
+    silently answers with the base-class default instead of the real one. For
+    `server_tools` that default is empty, which made web search report itself
+    unavailable on the one vendor that hosts it — while every unit test passed,
+    because they use an unwrapped double.
+    """
+    from app.clients.llm.router import ProviderRegistry, _HealthTracked
+    from app.core.config import Settings
+
+    registry = ProviderRegistry(Settings(app_env="test"))
+    inner = AnthropicProvider("sk-not-a-real-key")
+    wrapped = _HealthTracked(inner, registry)
+
+    assert wrapped.server_tools == inner.server_tools
+    assert "web_search" in wrapped.server_tools
+
+
+def test_every_public_interface_attribute_survives_wrapping():
+    """The specific attribute above is not the point; the pattern is."""
+    from app.clients.llm.router import ProviderRegistry, _HealthTracked
+    from app.core.config import Settings
+
+    registry = ProviderRegistry(Settings(app_env="test"))
+    inner = AnthropicProvider("sk-not-a-real-key")
+    wrapped = _HealthTracked(inner, registry)
+
+    declared = [
+        name
+        for name in vars(LLMProvider)
+        if not name.startswith("_") and not callable(getattr(LLMProvider, name, None))
+    ]
+    for name in declared:
+        assert getattr(wrapped, name) == getattr(inner, name), (
+            f"_HealthTracked drops '{name}', so a wrapped provider reports the "
+            "base-class default instead of its own."
+        )

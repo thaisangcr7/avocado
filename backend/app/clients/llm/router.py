@@ -114,6 +114,11 @@ class _HealthTracked(LLMProvider):
         self._inner = inner
         self._registry = registry
         self.name = inner.name
+        # Forwarded, not inherited. Every class attribute the interface defines
+        # has to be copied across explicitly or the wrapper quietly answers
+        # with the base-class default — which for a capability means the
+        # feature reports itself as unavailable everywhere.
+        self.server_tools = inner.server_tools
 
     def models(self) -> list[ModelSpec]:
         return self._inner.models()
