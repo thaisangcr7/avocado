@@ -173,10 +173,19 @@ function ToolCard({ tool, onToggle }: { tool: Tool; onToggle: () => void }) {
             {/* Shown rather than hidden: this is the shape of what is coming,
                 and hiding it would make the registry look emptier than it is. */}
             {!tool.connected && <Badge tone="neutral">not connected</Badge>}
+            {/* Connected and reachable are different claims. Without this, a
+                server that is down looks identical to one that is working,
+                and the switch stays on with nothing to say it did nothing. */}
+            {tool.connected && tool.reachable === false && (
+              <Badge tone="warning">unreachable</Badge>
+            )}
           </div>
           <p className="mt-0.5 text-xs leading-relaxed text-ink-muted">{tool.description}</p>
           <p className="mt-1.5 text-[11px] text-ink-muted/80">
             ~{tool.context_cost_tokens.toLocaleString()} tokens of context
+            {tool.reachable === true &&
+              tool.tool_count !== null &&
+              ` · ${tool.tool_count} ${tool.tool_count === 1 ? 'tool' : 'tools'}`}
           </p>
         </div>
 

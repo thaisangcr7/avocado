@@ -11,10 +11,11 @@ wiki and an issue tracker take the same path, and neither appears in this file.
 
 from __future__ import annotations
 
+import json
 import re
 
 from app.clients.llm.base import ToolOutcome, ToolSchema
-from app.clients.tools.base import ToolTransportError
+from app.clients.tools.base import RemoteTool, ToolTransportError
 from app.clients.tools.registry import McpServers
 from app.core.logging import get_logger
 
@@ -33,9 +34,37 @@ SEPARATOR = "__"
 # measured against something far smaller.
 MAX_TOOLS_PER_SERVER = 40
 
+# Characters per token, for JSON rather than prose. Deliberately lower than the
+# four used for document text: schemas are punctuation-dense and tokenize worse,
+# and a cost shown to a user should err high rather than low. What is being
+# estimated is real — these bytes ride on every request while the tool is on.
+_CHARS_PER_TOKEN = 3
+
 
 def qualify(slug: str, tool: str) -> str:
     return f"{slug}{SEPARATOR}{_UNSAFE.sub('_', tool)}"
+
+
+def measure_cost(tools: list[RemoteTool], slug: str = "") -> int:
+    """What offering these tools adds to every request that has them on.
+
+    Measured from what is actually sent — the qualified name, the description
+    and the schema — rather than taken from a number someone typed into
+    configuration. The registry has always promised this cost was measured; for
+    a remote server this is where that becomes true.
+    """
+    payload = [
+        {
+            "name": qualify(slug, tool.name),
+            "description": tool.description,
+            "input_schema": tool.input_schema,
+        }
+        for tool in tools[:MAX_TOOLS_PER_SERVER]
+    ]
+    if not payload:
+        return 0
+    serialised = json.dumps(payload, separators=(",", ":"))
+    return max(1, len(serialised) // _CHARS_PER_TOKEN)
 
 
 class ToolRunner:
@@ -56,15 +85,13 @@ class ToolRunner:
         it used one.
         """
         out: list[ToolSchema] = []
+        listings = await self._servers.listings(slugs)
         for slug in slugs:
-            transport = self._servers.transport(slug)
-            if transport is None:
+            listing = listings.get(slug)
+            if listing is None or not listing.reachable:
+                log.warning("mcp_tools_unavailable", server=slug)
                 continue
-            try:
-                offered = await transport.list_tools()
-            except ToolTransportError as exc:
-                log.warning("mcp_tools_unavailable", server=slug, detail=exc.detail)
-                continue
+            offered = listing.tools
 
             for tool in offered[:MAX_TOOLS_PER_SERVER]:
                 name = qualify(slug, tool.name)

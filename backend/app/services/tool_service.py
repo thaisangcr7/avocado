@@ -12,13 +12,14 @@ import uuid
 from dataclasses import dataclass
 
 from app.clients.llm.router import ModelRouter, TaskType
-from app.core.config import McpServerConfig
+from app.clients.tools.registry import McpServers, ServerListing
 from app.core.errors import AvocadoError, NotFoundError, ValidationError
 from app.core.logging import get_logger
 from app.models.enums import ToolKind
 from app.repositories.tools import ConversationToolRepository
 from app.schemas.tools import ToolResponse, ToolSelectionResponse
 from app.services.tool_catalogue import ToolDefinition, catalogue_for
+from app.services.tool_runner import measure_cost
 
 log = get_logger(__name__)
 
@@ -59,11 +60,12 @@ class ToolService:
         *,
         selections: ConversationToolRepository,
         router: ModelRouter | None = None,
-        servers: list[McpServerConfig] | None = None,
+        servers: McpServers | None = None,
     ) -> None:
         self._selections = selections
         self._router = router
-        self._catalogue = catalogue_for(servers or [])
+        self._servers = servers
+        self._catalogue = catalogue_for(servers.configs if servers else [])
         self._by_slug = {tool.slug: tool for tool in self._catalogue}
 
     async def _require_conversation(
@@ -92,6 +94,13 @@ class ToolService:
             client_tools=provider.supports_client_tools,
         )
 
+    async def _health(self) -> dict[str, ServerListing]:
+        """Probe every connected server. Nothing configured means no probing."""
+        if self._servers is None:
+            return {}
+        remote = [t.slug for t in self._catalogue if t.kind is ToolKind.MCP]
+        return await self._servers.listings(remote)
+
     async def catalogue(
         self,
         conversation_id: uuid.UUID,
@@ -112,20 +121,34 @@ class ToolService:
         else:
             enabled = {t.slug for t in self._catalogue if t.enabled_by_default}
 
-        tools = [
-            ToolResponse(
-                slug=tool.slug,
-                name=tool.name,
-                description=tool.description,
-                category=tool.category,
-                kind=tool.kind,
-                context_cost_tokens=tool.context_cost_tokens,
-                enabled=tool.slug in enabled and _runnable(tool, can),
-                connected=tool.kind is not ToolKind.PLACEHOLDER,
-                runs_on=sorted(tool.providers),
+        # One probe per connected server, cached and run concurrently. It
+        # answers two questions at once: whether the server is answering, and
+        # what its schemas actually cost.
+        health = await self._health()
+
+        tools = []
+        for tool in self._catalogue:
+            listing = health.get(tool.slug)
+            cost = tool.context_cost_tokens
+            if listing is not None and listing.reachable:
+                cost = measure_cost(listing.tools, tool.slug) or cost
+            tools.append(
+                ToolResponse(
+                    slug=tool.slug,
+                    name=tool.name,
+                    description=tool.description,
+                    category=tool.category,
+                    kind=tool.kind,
+                    context_cost_tokens=cost,
+                    enabled=tool.slug in enabled and _runnable(tool, can),
+                    connected=tool.kind is not ToolKind.PLACEHOLDER,
+                    runs_on=sorted(tool.providers),
+                    # None for anything that is not a remote server: a built-in
+                    # has no separate thing to be reachable.
+                    reachable=listing.reachable if listing is not None else None,
+                    tool_count=len(listing.tools) if listing is not None else None,
+                )
             )
-            for tool in self._catalogue
-        ]
 
         return ToolSelectionResponse(
             tools=tools,

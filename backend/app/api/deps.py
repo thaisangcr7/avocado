@@ -286,9 +286,7 @@ def get_tool_service(
     # answer path always read the same list — a picker built from one set of
     # servers and a turn executed against another is the exact disagreement
     # this whole surface exists to avoid.
-    return ToolService(
-        selections=selections, router=router, servers=request.app.state.mcp_servers.configs
-    )
+    return ToolService(selections=selections, router=router, servers=request.app.state.mcp_servers)
 
 
 ToolServiceDep = Annotated[ToolService, Depends(get_tool_service)]

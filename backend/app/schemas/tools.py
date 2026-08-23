@@ -24,6 +24,13 @@ class ToolResponse(ApiModel):
     # as off when the answering model comes from somewhere else, rather than
     # appearing on and doing nothing.
     runs_on: list[str] = []
+    # Whether a connected server answered when last asked. None for anything
+    # that is not a remote server — a built-in has no separate thing to be
+    # reachable, and reporting False there would read as broken.
+    reachable: bool | None = None
+    # How many tools it offered. Shown so "connected" means something more than
+    # a row in a config file.
+    tool_count: int | None = None
 
 
 class ToolSelectionResponse(ApiModel):

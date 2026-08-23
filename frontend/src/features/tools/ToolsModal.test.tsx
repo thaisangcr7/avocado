@@ -19,6 +19,8 @@ const SELECTION: ToolSelection = {
       context_cost_tokens: 420,
       enabled: true,
       connected: true,
+      reachable: null,
+      tool_count: null,
     },
     {
       slug: 'issue-tracker',
@@ -29,6 +31,32 @@ const SELECTION: ToolSelection = {
       context_cost_tokens: 800,
       enabled: false,
       connected: false,
+      reachable: null,
+      tool_count: null,
+    },
+    {
+      slug: 'wiki',
+      name: 'Confluence',
+      description: 'Read the team wiki.',
+      category: 'knowledge',
+      kind: 'mcp',
+      context_cost_tokens: 390,
+      enabled: false,
+      connected: true,
+      reachable: false,
+      tool_count: 0,
+    },
+    {
+      slug: 'crm',
+      name: 'CRM',
+      description: 'Look up accounts.',
+      category: 'data',
+      kind: 'mcp',
+      context_cost_tokens: 640,
+      enabled: false,
+      connected: true,
+      reachable: true,
+      tool_count: 3,
     },
   ],
 }
@@ -114,5 +142,46 @@ describe('ToolsModal', () => {
 
     expect(screen.queryByText('Data explorer')).not.toBeInTheDocument()
     expect(screen.getByText('Issue tracker')).toBeInTheDocument()
+  })
+})
+
+describe('a connected server that is not answering', () => {
+  it('says it is unreachable rather than looking fine', async () => {
+    renderModal()
+    await screen.findByText('Confluence')
+
+    expect(screen.getByText(/unreachable/i)).toBeInTheDocument()
+  })
+
+  it('still lets it be switched, because being down is transient', async () => {
+    renderModal()
+    await screen.findByText('Confluence')
+
+    expect(screen.getByRole('switch', { name: /enable confluence/i })).toBeEnabled()
+  })
+
+  it('does not call a working server unreachable', async () => {
+    renderModal()
+    await screen.findByText('CRM')
+
+    const badges = screen.queryAllByText(/unreachable/i)
+    expect(badges).toHaveLength(1)
+  })
+
+  it('says how many tools a reachable server offers', async () => {
+    renderModal()
+    await screen.findByText('CRM')
+
+    expect(screen.getByText(/3 tools/)).toBeInTheDocument()
+  })
+
+  it('claims no tool count for anything that is not a remote server', async () => {
+    renderModal()
+    await screen.findByText('Data explorer')
+
+    // Only the one reachable server reports a count. A built-in is served in
+    // this process and has nothing separate to enumerate, and an unreachable
+    // server has not told us anything to report.
+    expect(screen.getAllByText(/· \d+ tools?/)).toHaveLength(1)
   })
 })

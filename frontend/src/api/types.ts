@@ -206,6 +206,13 @@ export interface Tool {
   enabled: boolean
   /** False for a tool that is declared but not wired to anything yet. */
   connected: boolean
+  /**
+   * Whether a connected server answered when last asked. Null for anything
+   * that is not a remote server — a built-in has nothing separate to be down.
+   */
+  reachable: boolean | null
+  /** How many tools it offered, so "connected" means more than a config row. */
+  tool_count: number | null
 }
 
 export interface ToolSelection {

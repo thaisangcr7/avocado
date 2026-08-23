@@ -10,9 +10,7 @@ Plan and estimates: [`workspaces-parity.md`](workspaces-parity.md).
 
 ## Current phase
 
-**E2 is connected end to end: an MCP server declared in `MCP_SERVERS` becomes
-a tool in the picker and a tool the model can call. What is left is showing a
-connected server's health in the UI, and measuring real context costs.**
+**E2 is done. Next unstarted block is Phase B — presets and slash commands.**
 
 | Step | State |
 |---|---|
@@ -35,7 +33,7 @@ connected server's health in the UI, and measuring real context costs.**
 | C — History and conversation management | ⬜ not started |
 | D — Shell and Spaces polish | ⬜ not started |
 | E — Schedules | ⬜ not started |
-| E2 — Tools and integrations (MCP) | ✅ registry, modal, MCP client and execution; health UI left |
+| E2 — Tools and integrations (MCP) | ✅ done |
 | E3 — Conversation instrumentation | 🔨 gauge done; enhance + welcome left |
 | F — Collaboration | ⬜ not started |
 | G — Enterprise trim | ⬜ not started |
@@ -70,11 +68,9 @@ Recorded so they are not relitigated in a later session.
 
 ## Known gaps
 
-- A server that is unreachable is logged and its tools are quietly not offered.
-  The turn survives, which is right, but the user sees a tool switched on with
-  no sign it did not run. The picker should show a connected server's health.
-- `context_cost_tokens` for a configured server is whatever the config says,
-  defaulting to 500. It should be measured from the real `tools/list`.
+- Nothing outstanding in E2. The two gaps recorded when it was first connected
+  — unreachable servers being invisible, and unmeasured context cost — are both
+  closed.
 
 ---
 
@@ -93,6 +89,7 @@ Recorded so they are not relitigated in a later session.
 
 Newest first. One line per shipped increment.
 
+- **E2-3 health** · One probe per connected server answers both open questions at once: whether it is answering, and what its schemas really cost. Cached for a minute and shared with the answer path, so showing health does not make the next question slower, and bounded by a short timeout so a hanging server cannot hold the picker. The card now distinguishes connected from reachable — an unreachable server says so instead of looking fine with a switch that quietly does nothing — and `context_cost_tokens` is measured from the real `tools/list` rather than taken from whatever configuration guessed.
 - **E2-3 connected** · `MCP_SERVERS` is now the whole delivery mechanism: a JSON row declares a server, and a slug matching a placeholder upgrades that card rather than adding a second one. `auth_ref` names the environment variable holding the credential, never the credential — and a named variable that is unset, a duplicate slug, or plaintext in production are all boot-time refusals rather than call-time surprises. Tools are qualified by server (`wiki__search`) so two servers offering `search` stay apart. A server that is down costs its own tools and not the turn. 25 tests. Verified against a real MCP server over a real socket, not only `MockTransport`: handshake, the session the server then required on every later call, a `tools/list` answered as SSE, a `tools/call` answered as JSON, the credential resolved from `auth_ref`, and a wrong token refused.
 - **E2-3 loop** · The model can now call a tool this side runs. `generate` takes tool schemas and an executor; the Anthropic adapter loops on `tool_use` and hands results back, capped at eight rounds so a model that keeps calling cannot bill indefinitely. Every call is answered including the ones that fail — the API rejects a turn that leaves one open, and a model told nothing about a failure assumes it worked. A vendor without the loop declares `supports_client_tools = False` rather than accepting tools and ignoring them. Still not reachable by a user: no server is configured yet.
 - **E2-3 client** · An MCP client over Streamable HTTP, hand-written rather than pulled from the SDK: a client needs `initialize`, `tools/list` and `tools/call`, and the SDK brings a server framework and a stdio transport this application has no use for. Handshakes once, carries the session, and keeps a hostile server from exhausting either the process or the context window — response bytes, listing pages and result text are all capped. Twelve tests against a fake server; nothing is wired to it yet.
