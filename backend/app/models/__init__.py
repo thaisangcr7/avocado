@@ -26,6 +26,7 @@ from app.models.enums import (
 )
 from app.models.invitations import Invitation, InvitationStatus
 from app.models.knowledge import DocumentClassification
+from app.models.presets import Preset, PresetPin, PresetShare
 from app.models.projects import Project, ProjectMember, Task
 from app.models.tenancy import Organization, Team, TeamMembership, User, Workspace
 from app.models.tools import ConversationTool
@@ -34,27 +35,28 @@ from app.models.voice import VoiceRecording
 
 __all__ = [
     "AnalysisRun",
-    "Artifact",
-    "ConversationTool",
-    "ToolCategory",
-    "ToolKind",
-    "ArtifactAuthor",
-    "ArtifactKind",
     "AnalysisStatus",
     "ApiUsageLog",
+    "Artifact",
+    "ArtifactAuthor",
+    "ArtifactKind",
     "Conversation",
+    "ConversationTool",
     "Document",
+    "DocumentChunk",
     "DocumentClassification",
     "DocumentKind",
-    "Invitation",
-    "InvitationStatus",
-    "DocumentChunk",
     "DocumentStatus",
     "DocumentTable",
     "DocumentType",
+    "Invitation",
+    "InvitationStatus",
     "Message",
     "MessageRole",
     "Organization",
+    "Preset",
+    "PresetPin",
+    "PresetShare",
     "Project",
     "ProjectMember",
     "ProjectStatus",
@@ -65,6 +67,8 @@ __all__ = [
     "TaskStatus",
     "Team",
     "TeamMembership",
+    "ToolCategory",
+    "ToolKind",
     "TranscriptStatus",
     "User",
     "VoiceRecording",

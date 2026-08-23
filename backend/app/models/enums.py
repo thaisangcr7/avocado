@@ -140,6 +140,25 @@ class ArtifactAuthor(StrEnum):
     USER = "user"
 
 
+class PresetScope(StrEnum):
+    """Who can see a preset.
+
+    Deliberately not "public": `PUBLISHED` still stops at the organisation
+    boundary. A preset is a system prompt, which is the most sensitive thing a
+    team writes into this product — it encodes how they work and what they care
+    about — and no scope here crosses a tenant.
+
+    `PRIVATE` is the author's own, plus anyone it has been shared with by name.
+    `ORG` is everyone in the organisation. `PUBLISHED` is `ORG` plus a claim
+    that it is worth other people's attention, which is what the Community tab
+    lists.
+    """
+
+    PRIVATE = "private"
+    ORG = "org"
+    PUBLISHED = "published"
+
+
 class ToolCategory(StrEnum):
     """Which tab an integration appears under."""
 
