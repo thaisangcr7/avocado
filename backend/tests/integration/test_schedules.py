@@ -251,3 +251,93 @@ async def test_one_failing_schedule_does_not_stop_another(
     fired = await sweep(app)
 
     assert fired == 1, "the second schedule must still run"
+
+
+# --- notifications --------------------------------------------------------
+
+
+async def test_a_completed_run_tells_the_person_who_asked_for_it(client, account, app, fake_llm):
+    """A schedule runs while nobody is watching. Without a notice the answer
+    sits unread in history and the run may as well not have happened."""
+    schedule = await make_schedule(client, account, name="Overnight brief")
+    await due_now(app, schedule["id"])
+    fake_llm.responses = ["Three documents changed."]
+
+    await sweep(app)
+
+    bell = (await client.get("/notifications", headers=account["headers"])).json()
+    assert bell["unread"] == 1
+    notice = bell["notifications"][0]
+    assert notice["kind"] == "schedule_ran"
+    assert "Overnight brief" in notice["title"]
+    # It links to the thread, so the answer is one click away.
+    assert notice["conversation_id"] is not None
+
+
+async def test_a_failed_run_says_so(client, account, app, fake_llm, monkeypatch):
+    """A silent failure is indistinguishable from a schedule nobody set up."""
+    schedule = await make_schedule(client, account, name="Broken brief")
+    await due_now(app, schedule["id"])
+
+    from app.services.rag_service import RAGService
+
+    async def explode(*args, **kwargs):
+        raise RuntimeError("the model is on fire")
+
+    monkeypatch.setattr(RAGService, "answer", explode)
+
+    await sweep(app)
+
+    bell = (await client.get("/notifications", headers=account["headers"])).json()
+    notice = bell["notifications"][0]
+    assert notice["kind"] == "schedule_failed"
+    assert "did not run" in notice["title"]
+    assert "on fire" in notice["body"]
+
+
+async def test_a_notice_can_be_marked_read(client, account, app, fake_llm):
+    schedule = await make_schedule(client, account)
+    await due_now(app, schedule["id"])
+    fake_llm.responses = ["Done."]
+    await sweep(app)
+
+    bell = (await client.get("/notifications", headers=account["headers"])).json()
+    marked = await client.put(
+        f"/notifications/{bell['notifications'][0]['id']}/read", headers=account["headers"]
+    )
+
+    assert marked.json()["unread"] == 0
+    assert marked.json()["notifications"][0]["read_at"] is not None
+
+
+async def test_one_person_cannot_clear_anothers_bell(client, account, app, fake_llm):
+    """A notification belongs to a person, so an id alone must not be enough."""
+    from tests.conftest import register_account
+
+    schedule = await make_schedule(client, account)
+    await due_now(app, schedule["id"])
+    fake_llm.responses = ["Done."]
+    await sweep(app)
+    bell = (await client.get("/notifications", headers=account["headers"])).json()
+    notice_id = bell["notifications"][0]["id"]
+
+    outsider = await register_account(client, email="bell@other.example", org="Other")
+    await client.put(f"/notifications/{notice_id}/read", headers=outsider["headers"])
+
+    still = (await client.get("/notifications", headers=account["headers"])).json()
+    assert still["unread"] == 1, "someone else must not be able to clear this"
+
+
+async def test_notifications_do_not_leak_between_people(client, account, app, fake_llm):
+    from tests.conftest import register_account
+
+    schedule = await make_schedule(client, account)
+    await due_now(app, schedule["id"])
+    fake_llm.responses = ["Done."]
+    await sweep(app)
+
+    outsider = await register_account(client, email="bell2@other.example", org="Other")
+    theirs = (await client.get("/notifications", headers=outsider["headers"])).json()
+
+    assert theirs["notifications"] == []
+    assert theirs["unread"] == 0

@@ -266,6 +266,24 @@ export interface EnhanceResult {
   changed: boolean
 }
 
+export type NotificationKind = 'schedule_ran' | 'schedule_failed'
+
+export interface Notification {
+  id: string
+  kind: NotificationKind
+  title: string
+  body: string | null
+  conversation_id: string | null
+  /** Null means unread. */
+  read_at: string | null
+  created_at: string
+}
+
+export interface NotificationList {
+  notifications: Notification[]
+  unread: number
+}
+
 export type PresetScope = 'private' | 'org' | 'published'
 
 /** Which tab of the library. Mirrors `PresetFilter` on the server. */

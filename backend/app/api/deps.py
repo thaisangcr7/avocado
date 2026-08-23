@@ -44,6 +44,7 @@ from app.repositories.documents import (
 from app.repositories.feedback import MessageFeedbackRepository
 from app.repositories.invitations import InvitationRepository
 from app.repositories.knowledge import ClassificationRepository
+from app.repositories.notifications import NotificationRepository
 from app.repositories.presets import (
     PresetPinRepository,
     PresetRepository,
@@ -71,6 +72,7 @@ from app.services.invitation_service import InvitationService
 from app.services.knowledge_service import KnowledgeService
 from app.services.membership_service import MembershipService
 from app.services.model_service import ModelService
+from app.services.notification_service import NotificationService
 from app.services.preset_service import PresetService
 from app.services.project_service import ProjectService
 from app.services.rag_service import RAGService
@@ -157,6 +159,7 @@ UsersDep = Annotated[UserRepository, Depends(_repo(UserRepository))]
 PresetsDep = Annotated[PresetRepository, Depends(_repo(PresetRepository))]
 FeedbackDep = Annotated[MessageFeedbackRepository, Depends(_repo(MessageFeedbackRepository))]
 SchedulesDep = Annotated[ScheduleRepository, Depends(_repo(ScheduleRepository))]
+NotificationsDep = Annotated[NotificationRepository, Depends(_repo(NotificationRepository))]
 PresetPinsDep = Annotated[PresetPinRepository, Depends(_repo(PresetPinRepository))]
 PresetSharesDep = Annotated[PresetShareRepository, Depends(_repo(PresetShareRepository))]
 OrgsDep = Annotated[OrganizationRepository, Depends(_repo(OrganizationRepository))]
@@ -312,6 +315,13 @@ def get_enhance_service(router: RouterDep) -> EnhanceService:
 
 
 EnhanceServiceDep = Annotated[EnhanceService, Depends(get_enhance_service)]
+
+
+def get_notification_service(notifications: NotificationsDep) -> NotificationService:
+    return NotificationService(notifications=notifications)
+
+
+NotificationServiceDep = Annotated[NotificationService, Depends(get_notification_service)]
 
 
 def get_artifact_service(artifacts: ArtifactsDep, router: RouterDep) -> ArtifactService:

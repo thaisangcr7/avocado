@@ -12,6 +12,7 @@
 import type { ReactNode } from 'react'
 
 import { useThemeStore, type ThemeChoice } from '@/stores/theme'
+import { NotificationBell } from '@/features/notifications/NotificationBell'
 import { cn } from '@/lib/utils'
 
 export type RailDestination =
@@ -33,10 +34,12 @@ export function NavRail({
   active,
   onNavigate,
   onNewChat,
+  onOpenConversation,
 }: {
   active: RailDestination | null
   onNavigate: (destination: RailDestination) => void
   onNewChat: () => void
+  onOpenConversation?: (conversationId: string) => void
 }) {
   const choice = useThemeStore((state) => state.choice)
   const setChoice = useThemeStore((state) => state.setChoice)
@@ -95,6 +98,8 @@ export function NavRail({
       />
 
       <div className="flex-1" />
+
+      <NotificationBell onOpenConversation={onOpenConversation} />
 
       <RailButton
         label={`Theme: ${choice}`}

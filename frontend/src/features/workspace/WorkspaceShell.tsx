@@ -126,6 +126,10 @@ export function WorkspaceShell() {
         <NavRail
           active={historyOpen ? 'history' : rightOpen ? 'library' : 'chat'}
           onNewChat={newChat}
+          onOpenConversation={(id) => {
+            setActiveConversationId(id)
+            setHistoryOpen(false)
+          }}
           onNavigate={(destination) => {
             if (destination === 'chat') {
               setThreadsOpen(false)

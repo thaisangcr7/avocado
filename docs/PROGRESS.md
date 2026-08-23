@@ -10,9 +10,10 @@ Plan and estimates: [`workspaces-parity.md`](workspaces-parity.md).
 
 ## Current phase
 
-**Phases A–E and E2/E3 are done. What is left is Phase G (enterprise trim)
-and Phase F (collaboration) — which the plan itself says to do last, or not
-at all.**
+**Phases A–E, E2, E3 are done, and G's substantive item (the bell) with them.
+What is left is the rest of G — a What's New feed and an attestation page,
+both of which need something real to say — and Phase F (collaboration), which
+the plan itself says to do last, or not at all.**
 
 | Step | State |
 |---|---|
@@ -38,7 +39,7 @@ at all.**
 | E2 — Tools and integrations (MCP) | ✅ done |
 | E3 — Conversation instrumentation | ✅ gauge, enhance done; landing pane covers welcome |
 | F — Collaboration | ⬜ not started |
-| G — Enterprise trim | ⬜ not started |
+| G — Enterprise trim | 🔨 bell done; feed and attestation left |
 
 ---
 
@@ -96,6 +97,7 @@ Recorded so they are not relitigated in a later session.
 
 Newest first. One line per shipped increment.
 
+- **Notifications** · The bell, and with it the half of Phase E that was missing: its plan said to deliver notices "into the existing notification surface", and there was none. A schedule runs while nobody is watching, so without this its answer sits unread in history and the run may as well not have happened. Failures notify too — a silent failure is indistinguishable from a schedule nobody set up. Addressed to a person rather than broadcast to a workspace, since "your overnight brief is ready" is not news to a colleague. Opening the panel does not clear the count: seeing that something arrived is not having read it. 5 backend tests, 6 frontend.
 - **E3-2** · The prompt wand. Cheap tier on purpose: it runs while someone waits with their hand on the keyboard, and a slow wand is one nobody presses twice. The rule worth guarding is that it must not *answer* — a model that helpfully replies instead of sharpening leaves the user about to send an answer as their question, so a reply that comes back far longer than the draft is discarded and the original kept. Rewriting text someone typed is a destructive edit, so there is an undo. 7 backend tests, 3 frontend.
 - **Phase E** · Schedules: a prompt, a recurrence, optionally a preset. Each run opens a conversation and sends it, so a scheduled answer lands in history with its citations rather than being a special kind of object. `croniter` rather than a hand-rolled parser, and the expression is validated at the boundary — an invalid cron does not fail loudly, it simply never fires. One arq cron entry sweeping every minute, because arq's cron jobs are static and a user's schedule is not. Two executor properties have tests: one failing schedule cannot stop another tenant's, and a failure still moves the clock forward rather than retrying for ever. The UI leads with the next run time and the last error, since a schedule failing quietly for a week is what this has to be designed against. 11 backend tests, 7 frontend.
 - **Phase D** · Presets reachable from the rail, not only the composer. Keyboard shortcuts (⇧N, ⇧H, ⇧P) that refuse to fire while someone is typing — these are bare letters, so without that guard a capital N in the composer would start a new conversation and lose the question. "Workspace" reads as "Space" in the UI; `workspace_id` is untouched. The theme switcher and the three-store library rail were already done, so this phase was smaller than the plan's estimate. 5 tests.

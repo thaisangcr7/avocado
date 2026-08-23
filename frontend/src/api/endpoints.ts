@@ -3,6 +3,7 @@
 import { http, tokenStore, BASE_URL } from './client'
 import type {
   Artifact,
+  NotificationList,
   EnhanceResult,
   Schedule,
   ScheduleInput,
@@ -264,6 +265,14 @@ export const historyApi = {
 export const enhanceApi = {
   rewrite: (workspaceId: string, draft: string) =>
     http.post<EnhanceResult>(`/workspaces/${workspaceId}/enhance`, { draft }),
+}
+
+export const notificationApi = {
+  list: () => http.get<NotificationList>('/notifications'),
+
+  markRead: (id: string) => http.put<NotificationList>(`/notifications/${id}/read`, {}),
+
+  markAllRead: () => http.put<NotificationList>('/notifications/read', {}),
 }
 
 export const scheduleApi = {

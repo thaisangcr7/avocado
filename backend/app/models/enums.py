@@ -152,6 +152,18 @@ class FeedbackRating(StrEnum):
     DOWN = "down"
 
 
+class NotificationKind(StrEnum):
+    """Why someone is being told something.
+
+    Kept narrow deliberately. A notification surface that accepts anything
+    becomes a second inbox nobody reads; each value here has to earn its place
+    by being something a person would want to be interrupted for.
+    """
+
+    SCHEDULE_RAN = "schedule_ran"
+    SCHEDULE_FAILED = "schedule_failed"
+
+
 class PresetScope(StrEnum):
     """Who can see a preset.
 

@@ -18,6 +18,7 @@ import {
   artifactApi,
   enhanceApi,
   historyApi,
+  notificationApi,
   presetApi,
   scheduleApi,
   toolApi,
@@ -66,6 +67,7 @@ export const queryKeys = {
   tools: (conversationId: string) => ['tools', conversationId] as const,
   presets: (which: string, search: string) => ['presets', which, search] as const,
   schedules: (workspaceId: string) => ['schedules', workspaceId] as const,
+  notifications: ['notifications'] as const,
   history: (workspaceId: string, which: string, search: string, offset: number) =>
     ['history', workspaceId, which, search, offset] as const,
   organization: ['organization'] as const,
@@ -430,6 +432,25 @@ export function useDeleteSchedule(workspaceId: string) {
 export function useEnhanceDraft(workspaceId: string) {
   return useMutation({
     mutationFn: (draft: string) => enhanceApi.rewrite(workspaceId, draft),
+  })
+}
+
+export function useNotifications() {
+  return useQuery({
+    queryKey: queryKeys.notifications,
+    queryFn: () => notificationApi.list(),
+    // A schedule can fire at any time, so the bell checks back on its own
+    // rather than only on a reload.
+    refetchInterval: 60_000,
+  })
+}
+
+export function useMarkNotificationsRead() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (id?: string) =>
+      id ? notificationApi.markRead(id) : notificationApi.markAllRead(),
+    onSuccess: (list) => queryClient.setQueryData(queryKeys.notifications, list),
   })
 }
 

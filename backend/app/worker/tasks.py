@@ -220,10 +220,12 @@ async def run_due_schedules(
     from datetime import UTC, datetime
 
     from app.models.conversations import Conversation, Message
-    from app.models.enums import MessageRole
+    from app.models.enums import MessageRole, NotificationKind
     from app.repositories.conversations import ConversationRepository, MessageRepository
+    from app.repositories.notifications import NotificationRepository
     from app.repositories.presets import PresetRepository
     from app.repositories.schedules import ScheduleRepository
+    from app.services.notification_service import notify
     from app.services.rag_service import RAGService
     from app.services.schedule_service import next_run_after
 
@@ -298,6 +300,19 @@ async def run_due_schedules(
                     )
                 )
 
+                # The whole point of a schedule is that it runs while nobody
+                # is watching, so without this the answer sits unread in history
+                # and the run may as well not have happened.
+                await notify(
+                    NotificationRepository(session),
+                    workspace_id=workspace_id,
+                    user_id=schedule.created_by_user_id,
+                    kind=NotificationKind.SCHEDULE_RAN,
+                    title=f"{schedule.name} is ready",
+                    body=answer[:300],
+                    conversation_id=conversation.id,
+                )
+
                 schedule.last_run_at = now
                 schedule.last_error = None
                 schedule.next_run_at = next_run_after(schedule.cron, now)
@@ -315,6 +330,17 @@ async def run_due_schedules(
                 schedules = ScheduleRepository(session)
                 schedule = await schedules.get_scoped(schedule_id, workspace_id)
                 if schedule is not None:
+                    # Telling someone it broke matters more than telling them it
+                    # worked: a silent failure is indistinguishable from a
+                    # schedule nobody set up.
+                    await notify(
+                        NotificationRepository(session),
+                        workspace_id=workspace_id,
+                        user_id=schedule.created_by_user_id,
+                        kind=NotificationKind.SCHEDULE_FAILED,
+                        title=f"{schedule.name} did not run",
+                        body=str(exc)[:300],
+                    )
                     schedule.last_run_at = now
                     schedule.last_error = str(exc)[:500]
                     schedule.next_run_at = next_run_after(schedule.cron, now)

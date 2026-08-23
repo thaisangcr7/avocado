@@ -27,6 +27,7 @@ from app.models.enums import (
 from app.models.feedback import MessageFeedback
 from app.models.invitations import Invitation, InvitationStatus
 from app.models.knowledge import DocumentClassification
+from app.models.notifications import Notification
 from app.models.presets import Preset, PresetPin, PresetShare
 from app.models.projects import Project, ProjectMember, Task
 from app.models.schedules import Schedule
@@ -56,6 +57,7 @@ __all__ = [
     "Message",
     "MessageFeedback",
     "MessageRole",
+    "Notification",
     "Organization",
     "Preset",
     "PresetPin",
