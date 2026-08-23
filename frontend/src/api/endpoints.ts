@@ -3,6 +3,9 @@
 import { http, tokenStore, BASE_URL } from './client'
 import type {
   Artifact,
+  ConversationPage,
+  FeedbackRating,
+  HistoryFilter,
   Preset,
   PresetFilter,
   PresetInput,
@@ -200,6 +203,58 @@ export const toolApi = {
     http.put<ToolSelection>(
       `/workspaces/${workspaceId}/conversations/${conversationId}/tools`,
       { slugs },
+    ),
+}
+
+export const historyApi = {
+  list: (
+    workspaceId: string,
+    { which = 'all', search, limit = 25, offset = 0 }: {
+      which?: HistoryFilter
+      search?: string
+      limit?: number
+      offset?: number
+    } = {},
+  ) => {
+    const params = new URLSearchParams({
+      which,
+      limit: String(limit),
+      offset: String(offset),
+    })
+    if (search) params.set('search', search)
+    return http.get<ConversationPage>(
+      `/workspaces/${workspaceId}/conversations/history?${params.toString()}`,
+    )
+  },
+
+  setFlags: (
+    workspaceId: string,
+    conversationId: string,
+    flags: { pinned?: boolean; archived?: boolean },
+  ) =>
+    http.put<Conversation>(
+      `/workspaces/${workspaceId}/conversations/${conversationId}/flags`,
+      flags,
+    ),
+
+  /**
+   * Fetch the markdown through the authenticated client rather than linking to
+   * it. A bare <a href> carries no Authorization header, so the download would
+   * simply 401 — and it would do so silently, as a file the browser refuses to
+   * save rather than an error anyone sees.
+   */
+  exportMarkdown: (workspaceId: string, conversationId: string) =>
+    http.get<Blob>(`/workspaces/${workspaceId}/conversations/${conversationId}/export`),
+
+  rate: (
+    workspaceId: string,
+    conversationId: string,
+    messageId: string,
+    rating: FeedbackRating | null,
+  ) =>
+    http.put<{ message: string }>(
+      `/workspaces/${workspaceId}/conversations/${conversationId}/messages/${messageId}/feedback`,
+      { rating },
     ),
 }
 

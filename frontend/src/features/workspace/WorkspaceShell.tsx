@@ -8,6 +8,7 @@ import { useEffect, useState } from 'react'
 import type { AnalysisRun, Document } from '@/api/types'
 import { AnalysisView } from '@/features/analysis/AnalysisView'
 import { ChatView } from '@/features/chat/ChatView'
+import { HistoryPage } from '@/features/history/HistoryPage'
 import { DocumentPanel } from '@/features/documents/DocumentPanel'
 import { TaskResumePanel } from '@/features/tasks/TaskResumePanel'
 import { TeamSettings } from '@/features/teams/TeamSettings'
@@ -48,6 +49,9 @@ export function WorkspaceShell() {
     () => window.matchMedia('(min-width: 1024px)').matches,
   )
   const [libraryTab, setLibraryTab] = useState<LibraryTab>('documents')
+  // History is a page rather than the threads column: finding something from
+  // three weeks ago needs search and pagination, not a longer scroll.
+  const [historyOpen, setHistoryOpen] = useState(false)
   const [railWidth, setRailWidth] = useResizableWidth('avocado.rail_width', 420)
   const [rightView, setRightView] = useState<RightPanelView>('documents')
   // A question picked on the landing pane, held until the conversation it
@@ -93,7 +97,7 @@ export function WorkspaceShell() {
 
       <div className="relative flex min-h-0 flex-1 overflow-hidden">
         <NavRail
-          active={rightOpen ? 'library' : threadsOpen ? 'history' : 'chat'}
+          active={historyOpen ? 'history' : rightOpen ? 'library' : 'chat'}
           onNewChat={() =>
             startConversation.mutate(undefined, {
               onSuccess: (conversation) => {
@@ -106,14 +110,18 @@ export function WorkspaceShell() {
             if (destination === 'chat') {
               setThreadsOpen(false)
               setRightOpen(false)
+              setHistoryOpen(false)
+              return
+            }
+            if (destination === 'history') {
+              setHistoryOpen((open) => !open)
               return
             }
             if (destination === 'library') {
               setRightOpen((open) => !open)
               return
             }
-            // History and Spaces both live in the threads column — Spaces is
-            // its switcher at the top — so both open it.
+            // Spaces is the switcher at the top of the threads column.
             setThreadsOpen((open) => (destination === 'spaces' ? true : !open))
           }}
         />
@@ -165,6 +173,14 @@ export function WorkspaceShell() {
             <div className="flex h-full items-center justify-center text-sm text-ink-muted">
               Create a workspace to begin.
             </div>
+          ) : historyOpen ? (
+            <HistoryPage
+              workspaceId={workspace.id}
+              onOpen={(id) => {
+                setActiveConversationId(id)
+                setHistoryOpen(false)
+              }}
+            />
           ) : (
             <ChatView
               workspaceId={workspace.id}

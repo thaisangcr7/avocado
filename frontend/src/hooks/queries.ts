@@ -16,6 +16,7 @@ import {
 import {
   analysisApi,
   artifactApi,
+  historyApi,
   presetApi,
   toolApi,
   authApi,
@@ -41,6 +42,8 @@ import type {
   TaskStatus,
   PresetFilter,
   PresetInput,
+  FeedbackRating,
+  HistoryFilter,
 } from '@/api/types'
 
 export const queryKeys = {
@@ -59,6 +62,8 @@ export const queryKeys = {
   artifact: (id: string) => ['artifact', id] as const,
   tools: (conversationId: string) => ['tools', conversationId] as const,
   presets: (which: string, search: string) => ['presets', which, search] as const,
+  history: (workspaceId: string, which: string, search: string, offset: number) =>
+    ['history', workspaceId, which, search, offset] as const,
   organization: ['organization'] as const,
   orgMembers: ['organization', 'members'] as const,
   teams: ['teams'] as const,
@@ -335,6 +340,50 @@ export function usePublishPreset() {
   return useMutation({
     mutationFn: (id: string) => presetApi.publish(id),
     onSuccess: invalidate,
+  })
+}
+
+export function useHistory(
+  workspaceId: string,
+  which: HistoryFilter,
+  search: string,
+  offset: number,
+  limit = 20,
+) {
+  return useQuery({
+    queryKey: queryKeys.history(workspaceId, which, search, offset),
+    queryFn: () => historyApi.list(workspaceId, { which, search: search || undefined, limit, offset }),
+    // A page of history should not blank out while the next one loads.
+    placeholderData: (previous) => previous,
+  })
+}
+
+export function useSetConversationFlags(workspaceId: string) {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: ({
+      conversationId,
+      ...flags
+    }: {
+      conversationId: string
+      pinned?: boolean
+      archived?: boolean
+    }) => historyApi.setFlags(workspaceId, conversationId, flags),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['history'] })
+      void queryClient.invalidateQueries({ queryKey: queryKeys.conversations(workspaceId) })
+    },
+  })
+}
+
+export function useRateMessage(workspaceId: string, conversationId: string) {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: ({ messageId, rating }: { messageId: string; rating: FeedbackRating | null }) =>
+      historyApi.rate(workspaceId, conversationId, messageId, rating),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: queryKeys.messages(conversationId) })
+    },
   })
 }
 

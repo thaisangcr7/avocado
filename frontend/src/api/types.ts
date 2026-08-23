@@ -123,6 +123,10 @@ export interface Conversation {
   title: string
   created_at: string
   updated_at: string
+  pinned?: boolean
+  archived?: boolean
+  /** Present only on the history page, which counts them alongside the row. */
+  message_count?: number | null
 }
 
 export interface Message {
@@ -140,6 +144,10 @@ export interface Message {
   output_tokens: number | null
   latency_ms: number | null
   created_at: string
+  preset_id?: string | null
+  preset_version?: number | null
+  /** This reader's own rating, not a tally. */
+  feedback?: FeedbackRating | null
 }
 
 export interface ChatTurn {
@@ -214,6 +222,17 @@ export interface Tool {
   /** How many tools it offered, so "connected" means more than a config row. */
   tool_count: number | null
 }
+
+export type HistoryFilter = 'all' | 'active' | 'archived' | 'pinned'
+
+export interface ConversationPage {
+  conversations: Conversation[]
+  total: number
+  limit: number
+  offset: number
+}
+
+export type FeedbackRating = 'up' | 'down'
 
 export type PresetScope = 'private' | 'org' | 'published'
 
