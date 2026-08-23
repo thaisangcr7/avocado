@@ -3,6 +3,8 @@
 import { http, tokenStore, BASE_URL } from './client'
 import type {
   Artifact,
+  Schedule,
+  ScheduleInput,
   ConversationPage,
   FeedbackRating,
   HistoryFilter,
@@ -256,6 +258,20 @@ export const historyApi = {
       `/workspaces/${workspaceId}/conversations/${conversationId}/messages/${messageId}/feedback`,
       { rating },
     ),
+}
+
+export const scheduleApi = {
+  list: (workspaceId: string) =>
+    http.get<Schedule[]>(`/workspaces/${workspaceId}/schedules`),
+
+  create: (workspaceId: string, input: ScheduleInput) =>
+    http.post<Schedule>(`/workspaces/${workspaceId}/schedules`, input),
+
+  update: (workspaceId: string, id: string, input: Partial<ScheduleInput>) =>
+    http.patch<Schedule>(`/workspaces/${workspaceId}/schedules/${id}`, input),
+
+  remove: (workspaceId: string, id: string) =>
+    http.delete<void>(`/workspaces/${workspaceId}/schedules/${id}`),
 }
 
 export const presetApi = {

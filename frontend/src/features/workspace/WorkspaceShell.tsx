@@ -10,6 +10,7 @@ import { AnalysisView } from '@/features/analysis/AnalysisView'
 import { ChatView } from '@/features/chat/ChatView'
 import { HistoryPage } from '@/features/history/HistoryPage'
 import { PresetsModal } from '@/features/presets/PresetsModal'
+import { SchedulesModal } from '@/features/schedules/SchedulesModal'
 import { useShortcuts } from '@/hooks/useShortcuts'
 import { DocumentPanel } from '@/features/documents/DocumentPanel'
 import { TaskResumePanel } from '@/features/tasks/TaskResumePanel'
@@ -55,6 +56,7 @@ export function WorkspaceShell() {
   // three weeks ago needs search and pagination, not a longer scroll.
   const [historyOpen, setHistoryOpen] = useState(false)
   const [presetsOpen, setPresetsOpen] = useState(false)
+  const [schedulesOpen, setSchedulesOpen] = useState(false)
 
   const [railWidth, setRailWidth] = useResizableWidth('avocado.rail_width', 420)
   const [rightView, setRightView] = useState<RightPanelView>('documents')
@@ -116,6 +118,10 @@ export function WorkspaceShell() {
 
       {presetsOpen && <PresetsModal onClose={() => setPresetsOpen(false)} />}
 
+      {schedulesOpen && workspace && (
+        <SchedulesModal workspaceId={workspace.id} onClose={() => setSchedulesOpen(false)} />
+      )}
+
       <div className="relative flex min-h-0 flex-1 overflow-hidden">
         <NavRail
           active={historyOpen ? 'history' : rightOpen ? 'library' : 'chat'}
@@ -133,6 +139,10 @@ export function WorkspaceShell() {
             }
             if (destination === 'presets') {
               setPresetsOpen(true)
+              return
+            }
+            if (destination === 'schedules') {
+              setSchedulesOpen(true)
               return
             }
             if (destination === 'library') {

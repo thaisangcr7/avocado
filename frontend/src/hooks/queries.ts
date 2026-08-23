@@ -18,6 +18,7 @@ import {
   artifactApi,
   historyApi,
   presetApi,
+  scheduleApi,
   toolApi,
   authApi,
   conversationApi,
@@ -44,6 +45,7 @@ import type {
   PresetInput,
   FeedbackRating,
   HistoryFilter,
+  ScheduleInput,
 } from '@/api/types'
 
 export const queryKeys = {
@@ -62,6 +64,7 @@ export const queryKeys = {
   artifact: (id: string) => ['artifact', id] as const,
   tools: (conversationId: string) => ['tools', conversationId] as const,
   presets: (which: string, search: string) => ['presets', which, search] as const,
+  schedules: (workspaceId: string) => ['schedules', workspaceId] as const,
   history: (workspaceId: string, which: string, search: string, offset: number) =>
     ['history', workspaceId, which, search, offset] as const,
   organization: ['organization'] as const,
@@ -384,6 +387,42 @@ export function useRateMessage(workspaceId: string, conversationId: string) {
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: queryKeys.messages(conversationId) })
     },
+  })
+}
+
+export function useSchedules(workspaceId: string) {
+  return useQuery({
+    queryKey: queryKeys.schedules(workspaceId),
+    queryFn: () => scheduleApi.list(workspaceId),
+    enabled: Boolean(workspaceId),
+  })
+}
+
+export function useCreateSchedule(workspaceId: string) {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (input: ScheduleInput) => scheduleApi.create(workspaceId, input),
+    onSuccess: () =>
+      queryClient.invalidateQueries({ queryKey: queryKeys.schedules(workspaceId) }),
+  })
+}
+
+export function useUpdateSchedule(workspaceId: string) {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: ({ id, input }: { id: string; input: Partial<ScheduleInput> }) =>
+      scheduleApi.update(workspaceId, id, input),
+    onSuccess: () =>
+      queryClient.invalidateQueries({ queryKey: queryKeys.schedules(workspaceId) }),
+  })
+}
+
+export function useDeleteSchedule(workspaceId: string) {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (id: string) => scheduleApi.remove(workspaceId, id),
+    onSuccess: () =>
+      queryClient.invalidateQueries({ queryKey: queryKeys.schedules(workspaceId) }),
   })
 }
 

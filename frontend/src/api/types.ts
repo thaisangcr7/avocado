@@ -234,6 +234,31 @@ export interface ConversationPage {
 
 export type FeedbackRating = 'up' | 'down'
 
+export interface Schedule {
+  id: string
+  workspace_id: string
+  name: string
+  prompt: string
+  /** Five-field cron. Validated server-side at the moment it is typed. */
+  cron: string
+  preset_id: string | null
+  enabled: boolean
+  next_run_at: string
+  last_run_at: string | null
+  /** Why the last run failed, when it did. */
+  last_error: string | null
+  created_at: string
+  updated_at: string
+}
+
+export interface ScheduleInput {
+  name: string
+  prompt: string
+  cron: string
+  preset_id?: string | null
+  enabled?: boolean
+}
+
 export type PresetScope = 'private' | 'org' | 'published'
 
 /** Which tab of the library. Mirrors `PresetFilter` on the server. */
