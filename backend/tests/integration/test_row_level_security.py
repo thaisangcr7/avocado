@@ -32,6 +32,10 @@ APP_ROLE = "avocado_rls_test"
 APP_PASSWORD = "rls-test-only-not-a-real-credential"  # noqa: S105
 
 
+# The tables the policies go on. Named once so setup and teardown cannot drift.
+RLS_TABLES = ("documents", "document_chunks", "conversations", "messages", "tasks")
+
+
 def _restricted_url(admin_url: str) -> str:
     """The test database URL, but connecting as the restricted role."""
     tail = admin_url.split("@", 1)[1]
@@ -75,7 +79,7 @@ async def restricted(engine):  # type: ignore[no-untyped-def]
             $$;
             """
         )
-        for table in ("documents", "document_chunks", "conversations", "messages", "tasks"):
+        for table in RLS_TABLES:
             await connection.exec_driver_sql(f"ALTER TABLE {table} ENABLE ROW LEVEL SECURITY")
             await connection.exec_driver_sql(f"ALTER TABLE {table} FORCE ROW LEVEL SECURITY")
             await connection.exec_driver_sql(f"DROP POLICY IF EXISTS tenant_isolation ON {table}")
@@ -100,6 +104,15 @@ async def restricted(engine):  # type: ignore[no-untyped-def]
     yield restricted_engine
     await restricted_engine.dispose()
     clear_identity()
+
+    # Undo the policies. The schema now outlives a single test, and these are
+    # FORCEd — left in place they would apply to the table owner too, and every
+    # later test in the run would silently see nothing.
+    async with engine.begin() as connection:
+        for table in RLS_TABLES:
+            await connection.exec_driver_sql(f"DROP POLICY IF EXISTS tenant_isolation ON {table}")
+            await connection.exec_driver_sql(f"ALTER TABLE {table} NO FORCE ROW LEVEL SECURITY")
+            await connection.exec_driver_sql(f"ALTER TABLE {table} DISABLE ROW LEVEL SECURITY")
 
 
 @pytest.fixture

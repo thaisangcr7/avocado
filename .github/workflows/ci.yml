@@ -86,7 +86,10 @@ jobs:
 
       - name: Tests
         working-directory: backend
-        run: pytest -q --cov=app --cov-report=term --cov-report=xml
+        # -n auto splits the suite across the runner's cores. It waits on
+        # Postgres and Docker far more than it computes, so wall time falls
+        # with workers. Each worker gets its own database (tests/conftest.py).
+        run: pytest -q -n auto --cov=app --cov-report=term --cov-report=xml
 
       - uses: actions/upload-artifact@v4
         if: always()

@@ -18,7 +18,11 @@ import pytest
 from app.clients.sandbox.base import SandboxDataset, SandboxLimits
 from app.clients.sandbox.docker_sandbox import DockerSandbox
 
-pytestmark = pytest.mark.anyio
+# `docker` because each of these starts a real container. They are the slowest
+# tests in the suite by a wide margin and the only ones needing a daemon, so
+# the inner development loop skips them — but nothing that touches the sandbox
+# is finished until they have run. `verify.sh` (no flags) always runs them.
+pytestmark = [pytest.mark.anyio, pytest.mark.docker]
 
 IMAGE = "avocado-sandbox:latest"
 

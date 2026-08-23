@@ -2,6 +2,12 @@
 pytest==8.3.4
 pytest-asyncio==0.25.2
 pytest-cov==6.0.0
+# Runs the suite across cores. The suite is IO-bound on Postgres and Docker,
+# so wall time falls roughly linearly with workers.
+pytest-xdist==3.6.1
+# Creates the per-worker databases xdist needs. A sync driver, because it runs
+# at import time before any event loop exists.
+psycopg[binary]==3.2.3
 httpx==0.28.1
 asgi-lifespan==2.1.0
 ruff==0.8.6

@@ -16,7 +16,7 @@ import asyncio
 import logging
 import os
 import uuid
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Iterator
 
 import pytest
 from httpx import ASGITransport, AsyncClient
@@ -33,11 +33,42 @@ os.environ.setdefault("RATE_LIMIT_ENABLED", "false")
 # captured logs, which makes leak assertions read as failures.
 logging.getLogger("httpx").setLevel(logging.WARNING)
 
-TEST_DATABASE_URL = os.environ.get(
+_BASE_DATABASE_URL = os.environ.get(
     "TEST_DATABASE_URL",
     "postgresql+asyncpg://avocado:avocado@localhost:5434/avocado_test",
 )
+
+# Under xdist every worker gets its own database. They share one schema
+# otherwise, and one worker truncating tables mid-test in another is the kind
+# of failure that only shows up under load and never reproduces alone.
+_WORKER = os.environ.get("PYTEST_XDIST_WORKER", "")
+TEST_DATABASE_URL = f"{_BASE_DATABASE_URL}_{_WORKER}" if _WORKER else _BASE_DATABASE_URL
 os.environ["DATABASE_URL"] = TEST_DATABASE_URL
+
+
+def _ensure_database() -> None:
+    """Create this worker's database if it is not there yet.
+
+    Connects to the server's default database to do it, because a database
+    cannot be created from inside itself. Serial runs use the database that is
+    already provisioned and skip this entirely.
+    """
+    if not _WORKER:
+        return
+
+    import psycopg  # noqa: PLC0415 - only needed under xdist
+
+    target = TEST_DATABASE_URL.rsplit("/", 1)[1]
+    admin = _BASE_DATABASE_URL.replace("+asyncpg", "").rsplit("/", 1)[0] + "/postgres"
+    with psycopg.connect(admin, autocommit=True) as connection:
+        exists = connection.execute(
+            "SELECT 1 FROM pg_database WHERE datname = %s", (target,)
+        ).fetchone()
+        if not exists:
+            connection.execute(f'CREATE DATABASE "{target}"')
+
+
+_ensure_database()
 
 import app.models  # noqa: F401,E402  (registers every table on Base.metadata)
 from app.clients.embeddings.providers import HashingEmbeddingProvider  # noqa: E402
@@ -79,16 +110,59 @@ def settings():  # type: ignore[no-untyped-def]
     return get_settings()
 
 
+@pytest.fixture(scope="session")
+def _schema(settings) -> Iterator[None]:  # type: ignore[no-untyped-def]
+    """Build the schema once for the whole run.
+
+    This used to be per-test, which meant every one of ~300 integration tests
+    dropped and recreated every table twice. That was roughly a second each and
+    the single largest cost in the suite — minutes of wall clock spent
+    rebuilding a structure that never changes between tests.
+
+    What has to be per-test is the *data*, not the structure, and the truncate
+    in `engine` does that in milliseconds.
+
+    Synchronous, with its own loop, because pytest-asyncio gives fixtures a
+    function-scoped event loop — a session-scoped async fixture cannot have one.
+    """
+
+    async def build(drop_only: bool = False) -> None:
+        engine = create_async_engine(TEST_DATABASE_URL, poolclass=None)
+        try:
+            async with engine.begin() as connection:
+                await connection.exec_driver_sql("CREATE EXTENSION IF NOT EXISTS vector")
+                await connection.run_sync(Base.metadata.drop_all)
+                if not drop_only:
+                    await connection.run_sync(Base.metadata.create_all)
+        finally:
+            await engine.dispose()
+
+    asyncio.run(build())
+    yield
+    asyncio.run(build(drop_only=True))
+
+
+# Emptied before each test, in an order that respects the foreign keys.
+_ALL_TABLES = ", ".join(f'"{table.name}"' for table in reversed(Base.metadata.sorted_tables))
+
+
 @pytest.fixture
-async def engine(settings) -> AsyncIterator:  # type: ignore[no-untyped-def]
+async def engine(_schema) -> AsyncIterator:  # type: ignore[no-untyped-def]
+    """An engine against the shared schema, with every table emptied first.
+
+    Truncating is what makes sharing the schema safe: a test still starts from
+    nothing, it just does not pay to rebuild the tables to get there. Cleaning
+    *before* rather than after also leaves a failed test's rows behind to be
+    inspected.
+    """
     engine = create_async_engine(TEST_DATABASE_URL, poolclass=None)
     async with engine.begin() as connection:
-        await connection.exec_driver_sql("CREATE EXTENSION IF NOT EXISTS vector")
-        await connection.run_sync(Base.metadata.drop_all)
-        await connection.run_sync(Base.metadata.create_all)
+        # CASCADE because the tables reference each other; RESTART IDENTITY so
+        # no sequence leaks a value from a previous test.
+        await connection.exec_driver_sql(
+            f"TRUNCATE TABLE {_ALL_TABLES} RESTART IDENTITY CASCADE"  # noqa: S608
+        )
     yield engine
-    async with engine.begin() as connection:
-        await connection.run_sync(Base.metadata.drop_all)
     await engine.dispose()
 
 

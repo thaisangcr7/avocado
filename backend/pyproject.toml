@@ -29,6 +29,9 @@ asyncio_mode = "auto"
 asyncio_default_fixture_loop_scope = "function"
 testpaths = ["tests"]
 filterwarnings = ["ignore::DeprecationWarning"]
+markers = [
+    "docker: needs a real Docker daemon; skipped by ./scripts/verify.sh --quick",
+]
 
 [tool.coverage.run]
 source = ["app"]
