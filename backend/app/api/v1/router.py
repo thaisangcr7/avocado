@@ -13,6 +13,7 @@ from app.api.v1 import (
     health,
     invitations,
     models,
+    presets,
     projects,
     teams,
     tools,
@@ -31,6 +32,7 @@ api_router.include_router(documents.router)
 api_router.include_router(conversations.router)
 api_router.include_router(analysis.router)
 api_router.include_router(artifacts.router)
+api_router.include_router(presets.router)
 api_router.include_router(tools.router)
 api_router.include_router(voice.router)
 api_router.include_router(models.router)

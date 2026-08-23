@@ -43,6 +43,11 @@ from app.repositories.documents import (
 )
 from app.repositories.invitations import InvitationRepository
 from app.repositories.knowledge import ClassificationRepository
+from app.repositories.presets import (
+    PresetPinRepository,
+    PresetRepository,
+    PresetShareRepository,
+)
 from app.repositories.projects import ProjectRepository, TaskRepository
 from app.repositories.tenancy import (
     MembershipRepository,
@@ -63,6 +68,7 @@ from app.services.invitation_service import InvitationService
 from app.services.knowledge_service import KnowledgeService
 from app.services.membership_service import MembershipService
 from app.services.model_service import ModelService
+from app.services.preset_service import PresetService
 from app.services.project_service import ProjectService
 from app.services.rag_service import RAGService
 from app.services.report_service import ReportService
@@ -144,6 +150,9 @@ def _repo(cls):  # type: ignore[no-untyped-def]
 
 
 UsersDep = Annotated[UserRepository, Depends(_repo(UserRepository))]
+PresetsDep = Annotated[PresetRepository, Depends(_repo(PresetRepository))]
+PresetPinsDep = Annotated[PresetPinRepository, Depends(_repo(PresetPinRepository))]
+PresetSharesDep = Annotated[PresetShareRepository, Depends(_repo(PresetShareRepository))]
 OrgsDep = Annotated[OrganizationRepository, Depends(_repo(OrganizationRepository))]
 TeamsDep = Annotated[TeamRepository, Depends(_repo(TeamRepository))]
 MembershipsDep = Annotated[MembershipRepository, Depends(_repo(MembershipRepository))]
@@ -270,6 +279,19 @@ def get_membership_service(
 
 
 MembershipServiceDep = Annotated[MembershipService, Depends(get_membership_service)]
+
+
+def get_preset_service(
+    presets: PresetsDep,
+    pins: PresetPinsDep,
+    shares: PresetSharesDep,
+    users: UsersDep,
+    access: MembershipServiceDep,
+) -> PresetService:
+    return PresetService(presets=presets, pins=pins, shares=shares, users=users, access=access)
+
+
+PresetServiceDep = Annotated[PresetService, Depends(get_preset_service)]
 
 
 def get_artifact_service(artifacts: ArtifactsDep, router: RouterDep) -> ArtifactService:
