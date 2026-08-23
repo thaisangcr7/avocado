@@ -7,6 +7,7 @@ they cover.
 
 from __future__ import annotations
 
+import asyncio
 import io
 import json
 
@@ -255,16 +256,33 @@ async def test_an_empty_document_is_skipped_rather_than_guessed_at(client, owner
     assert result.status_code in (200, 502)
 
 
+async def wait_for_classification(client, owner, document_id, *, attempts: int = 100):
+    """Poll until the automatic pass has actually written its result.
+
+    Classification runs *after* a document is marked ready, so readiness is not
+    the condition this asserts. Reading straight after `ready` passes on a
+    machine fast enough to lose the race and fails on a loaded one — which is
+    what CI is, and what running the suite across cores made local too.
+    """
+    for _ in range(attempts):
+        response = await client.get(
+            f"/workspaces/{owner['workspace_id']}/documents/{document_id}/classification",
+            headers=owner["headers"],
+        )
+        if response.status_code == 200:
+            return response
+        await asyncio.sleep(0.05)
+    return response
+
+
 async def test_ingestion_classifies_a_document_without_being_asked(client, owner, fake_llm):
     """A document should join the knowledge map by being uploaded, not by
     someone remembering to tag it."""
     fake_llm.responses = [classification()]
     document = await seed(client, owner, "auto.txt")
 
-    response = await client.get(
-        f"/workspaces/{owner['workspace_id']}/documents/{document['id']}/classification",
-        headers=owner["headers"],
-    )
+    response = await wait_for_classification(client, owner, document["id"])
+
     assert response.status_code == 200, response.text
     assert response.json()["kind"] == "policy"
 
