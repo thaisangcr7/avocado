@@ -10,7 +10,8 @@ Plan and estimates: [`workspaces-parity.md`](workspaces-parity.md).
 
 ## Current phase
 
-**E3 gauge done. E2 registry and modal done — MCP client is what turns a placeholder real.**
+**E2 has a working MCP client. Wiring a configured server into the catalogue
+and the answer path is what turns a placeholder real.**
 
 | Step | State |
 |---|---|
@@ -33,7 +34,7 @@ Plan and estimates: [`workspaces-parity.md`](workspaces-parity.md).
 | C — History and conversation management | ⬜ not started |
 | D — Shell and Spaces polish | ⬜ not started |
 | E — Schedules | ⬜ not started |
-| E2 — Tools and integrations (MCP) | 🔨 registry + modal done; MCP client next |
+| E2 — Tools and integrations (MCP) | 🔨 registry, modal and MCP client done; execution next |
 | E3 — Conversation instrumentation | 🔨 gauge done; enhance + welcome left |
 | F — Collaboration | ⬜ not started |
 | G — Enterprise trim | ⬜ not started |
@@ -74,6 +75,7 @@ Recorded so they are not relitigated in a later session.
 
 Newest first. One line per shipped increment.
 
+- **E2-3 client** · An MCP client over Streamable HTTP, hand-written rather than pulled from the SDK: a client needs `initialize`, `tools/list` and `tools/call`, and the SDK brings a server framework and a stdio transport this application has no use for. Handshakes once, carries the session, and keeps a hostile server from exhausting either the process or the context window — response bytes, listing pages and result text are all capped. Twelve tests against a fake server; nothing is wired to it yet.
 - **A-fix** · The Phase A viewer was built but wired to nothing — no user could open an artifact. Surfaced in the right rail and renamed `ArtifactViewer`, because an unrelated `ArtifactPanel` already held that name. Verified in a browser, not just by tests.
 - **First real tool** · Web search, via Anthropic's server-hosted `web_search_20260209`. No new account: it runs on the key already configured. Applies to the no-hits path only, so a grounded answer's citations keep meaning "from your documents". 10 placeholders left.
 - **E2 modal** · Search, five category tabs, cards with toggles, Tools button with the active count on the composer, and the cost line stating that enabled tools are spent whether or not they are used. A placeholder's toggle is disabled rather than failing on submit.
