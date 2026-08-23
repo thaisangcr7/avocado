@@ -33,6 +33,17 @@ class Conversation(Base, UUIDPrimaryKeyMixin, TimestampMixin):
 
     title: Mapped[str] = mapped_column(String(300), nullable=False, default="New conversation")
 
+    # One person's shortcut, like a preset pin — but a conversation belongs to
+    # a workspace rather than to a reader, so this sits on the row rather than
+    # in a join table. Revisit if threads become collaborative.
+    pinned: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, index=True)
+
+    # Out of the way without being gone. Deliberately not a `status` enum with
+    # a "completed" state: every chat is complete the moment it stops, so the
+    # chip would carry no information. Active or filed away is a real
+    # distinction; "completed" is not.
+    archived: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, index=True)
+
     messages: Mapped[list[Message]] = relationship(
         back_populates="conversation",
         cascade="all, delete-orphan",

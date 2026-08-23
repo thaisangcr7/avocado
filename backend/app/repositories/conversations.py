@@ -22,6 +22,56 @@ class ConversationRepository(WorkspaceScopedRepository[Conversation]):
         )
         return list((await self._session.execute(stmt)).scalars().all())
 
+    async def search(
+        self,
+        workspace_id: uuid.UUID,
+        *,
+        which: str = "all",
+        search: str | None = None,
+        limit: int = 25,
+        offset: int = 0,
+    ) -> tuple[list[tuple[Conversation, int]], int]:
+        """A page of history, each row with its message count, plus the total.
+
+        The count comes back in the same query as a correlated scalar. Fetching
+        it per row is the classic N+1, and a history page is exactly where that
+        bites: twenty rows, twenty extra round trips, on the one screen whose
+        whole job is to list things.
+        """
+        message_count = (
+            select(func.count(Message.id))
+            .where(Message.conversation_id == Conversation.id)
+            .correlate(Conversation)
+            .scalar_subquery()
+        )
+
+        filters = [Conversation.workspace_id == workspace_id]
+        if which == "pinned":
+            filters.append(Conversation.pinned.is_(True))
+        elif which == "archived":
+            filters.append(Conversation.archived.is_(True))
+        elif which == "active":
+            filters.append(Conversation.archived.is_(False))
+
+        if search:
+            filters.append(func.lower(Conversation.title).like(f"%{search.lower()}%"))
+
+        total = (
+            await self._session.execute(select(func.count(Conversation.id)).where(*filters))
+        ).scalar_one()
+
+        stmt = (
+            select(Conversation, message_count)
+            .where(*filters)
+            # Pinned first, then most recently touched. A pin is a claim that
+            # this one matters more than recency.
+            .order_by(Conversation.pinned.desc(), Conversation.updated_at.desc())
+            .limit(limit)
+            .offset(offset)
+        )
+        rows = (await self._session.execute(stmt)).all()
+        return [(row[0], row[1]) for row in rows], total
+
     async def get_for_task(
         self, task_id: uuid.UUID, workspace_id: uuid.UUID
     ) -> Conversation | None:

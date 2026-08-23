@@ -21,6 +21,7 @@ from app.repositories.tools import ConversationToolRepository
 from app.schemas.chat import (
     ChatTurnResponse,
     ConversationCreate,
+    ConversationPage,
     ConversationResponse,
     MessageCreate,
     MessageResponse,
@@ -119,6 +120,75 @@ class ChatService:
     async def list(self, workspace_id: uuid.UUID) -> list[ConversationResponse]:
         rows = await self._conversations.list_for_workspace(workspace_id)
         return [ConversationResponse.model_validate(c) for c in rows]
+
+    async def history(
+        self,
+        workspace_id: uuid.UUID,
+        *,
+        which: str = "all",
+        search: str | None = None,
+        limit: int = 25,
+        offset: int = 0,
+    ) -> ConversationPage:
+        """A page of history, each row carrying its message count."""
+        rows, total = await self._conversations.search(
+            workspace_id, which=which, search=search, limit=limit, offset=offset
+        )
+        conversations = []
+        for conversation, count in rows:
+            response = ConversationResponse.model_validate(conversation)
+            response.message_count = count
+            conversations.append(response)
+        return ConversationPage(
+            conversations=conversations, total=total, limit=limit, offset=offset
+        )
+
+    async def set_flags(
+        self,
+        conversation_id: uuid.UUID,
+        workspace_id: uuid.UUID,
+        *,
+        pinned: bool | None = None,
+        archived: bool | None = None,
+    ) -> ConversationResponse:
+        """Pin or file away. Only what was sent is changed."""
+        conversation = await self._require(conversation_id, workspace_id)
+        if pinned is not None:
+            conversation.pinned = pinned
+        if archived is not None:
+            conversation.archived = archived
+        await self._conversations.commit()
+        await self._conversations.refresh(conversation)
+        return ConversationResponse.model_validate(conversation)
+
+    async def export(self, conversation_id: uuid.UUID, workspace_id: uuid.UUID) -> tuple[str, str]:
+        """The whole thread as markdown. Returns (filename, body).
+
+        Markdown rather than the API's own JSON because the point of an export
+        is to be readable somewhere else — pasted into a document, attached to
+        a ticket. Citations come with it, since an answer without its sources
+        is exactly what this product refuses to produce.
+        """
+        conversation = await self._require(conversation_id, workspace_id)
+        rows = await self._messages.list_for_conversation(conversation_id, workspace_id)
+
+        lines = [f"# {conversation.title}", ""]
+        for message in rows:
+            who = "You" if message.role is MessageRole.USER else "Avocado"
+            when = message.created_at.strftime("%Y-%m-%d %H:%M")
+            lines.append(f"## {who} · {when}")
+            lines.append("")
+            lines.append(message.content)
+            if message.citations:
+                lines.append("")
+                lines.append("**Sources**")
+                for index, citation in enumerate(message.citations, start=1):
+                    name = citation.get("filename") or citation.get("document_id") or "source"
+                    lines.append(f"{index}. {name}")
+            lines.append("")
+
+        slug = re.sub(r"[^a-z0-9]+", "-", conversation.title.lower()).strip("-") or "conversation"
+        return f"{slug}.md", "\n".join(lines)
 
     async def get(
         self, conversation_id: uuid.UUID, workspace_id: uuid.UUID

@@ -5,9 +5,10 @@ from __future__ import annotations
 import json
 import uuid
 from collections.abc import AsyncIterator
+from typing import Literal
 
-from fastapi import APIRouter, status
-from fastapi.responses import StreamingResponse
+from fastapi import APIRouter, Query, status
+from fastapi.responses import PlainTextResponse, StreamingResponse
 
 from app.api.deps import ChatServiceDep, WorkspaceContextDep
 from app.core.errors import AvocadoError
@@ -15,6 +16,8 @@ from app.core.logging import get_logger
 from app.schemas.chat import (
     ChatTurnResponse,
     ConversationCreate,
+    ConversationFlags,
+    ConversationPage,
     ConversationResponse,
     ConversationUpdate,
     MessageCreate,
@@ -48,6 +51,60 @@ async def list_conversations(
     context: WorkspaceContextDep, service: ChatServiceDep
 ) -> list[ConversationResponse]:
     return await service.list(context.id)
+
+
+@router.get(
+    "/workspaces/{workspace_id}/conversations/history",
+    response_model=ConversationPage,
+)
+async def conversation_history(
+    context: WorkspaceContextDep,
+    service: ChatServiceDep,
+    which: Literal["all", "active", "archived", "pinned"] = Query(default="all"),
+    search: str | None = Query(default=None, max_length=200),
+    limit: int = Query(default=25, ge=1, le=100),
+    offset: int = Query(default=0, ge=0),
+) -> ConversationPage:
+    """A page of history: search, filter, and a message count per row."""
+    return await service.history(context.id, which=which, search=search, limit=limit, offset=offset)
+
+
+@router.get(
+    "/workspaces/{workspace_id}/conversations/{conversation_id}/export",
+    response_class=PlainTextResponse,
+)
+async def export_conversation(
+    conversation_id: uuid.UUID,
+    context: WorkspaceContextDep,
+    service: ChatServiceDep,
+) -> PlainTextResponse:
+    """The thread as markdown, as an attachment."""
+    filename, body = await service.export(conversation_id, context.id)
+    return PlainTextResponse(
+        body,
+        headers={
+            "Content-Disposition": f'attachment; filename="{filename}"',
+            # It is user-authored text being handed back; never let a browser
+            # sniff it into something it can execute.
+            "X-Content-Type-Options": "nosniff",
+        },
+    )
+
+
+@router.put(
+    "/workspaces/{workspace_id}/conversations/{conversation_id}/flags",
+    response_model=ConversationResponse,
+)
+async def set_conversation_flags(
+    conversation_id: uuid.UUID,
+    payload: ConversationFlags,
+    context: WorkspaceContextDep,
+    service: ChatServiceDep,
+) -> ConversationResponse:
+    """Pin a thread, or file it away. Only what is sent changes."""
+    return await service.set_flags(
+        conversation_id, context.id, pinned=payload.pinned, archived=payload.archived
+    )
 
 
 @router.get(

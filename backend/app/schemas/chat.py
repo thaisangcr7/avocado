@@ -26,8 +26,29 @@ class ConversationResponse(ApiModel):
     user_id: uuid.UUID | None
     task_id: uuid.UUID | None
     title: str
+    pinned: bool = False
+    archived: bool = False
     created_at: datetime
     updated_at: datetime
+    # Counted alongside the row rather than fetched per row. Null where the
+    # caller did not ask for a history page and nothing counted it.
+    message_count: int | None = None
+
+
+class ConversationPage(ApiModel):
+    """One page of history, with enough to render numbered pagination."""
+
+    conversations: list[ConversationResponse]
+    total: int
+    limit: int
+    offset: int
+
+
+class ConversationFlags(BaseModel):
+    """Pin or file away. Both optional: sending one must not reset the other."""
+
+    pinned: bool | None = None
+    archived: bool | None = None
 
 
 class Citation(BaseModel):
