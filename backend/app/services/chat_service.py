@@ -27,7 +27,7 @@ from app.schemas.chat import (
 )
 from app.services.analysis_service import AnalysisService
 from app.services.preset_service import PresetService
-from app.services.rag_service import SYSTEM_PROMPT, RAGService
+from app.services.rag_service import SYSTEM_PROMPT, RAGService, with_preset
 from app.services.report_service import ReportService
 from app.services.tool_catalogue import BY_SLUG, catalogue_for
 from app.services.tool_runner import ToolRunner
@@ -322,6 +322,9 @@ class ChatService:
         history = await self._messages.recent_history(
             conversation_id, workspace_id, limit=HISTORY_WINDOW
         )
+        # The streamed turn is the one the UI actually uses, so a preset that
+        # only worked on the plain POST would look built and do nothing.
+        preset = await self._resolve_preset(payload.preset_slug, user_id=user_id, org_id=org_id)
 
         await self._messages.add(
             Message(
@@ -478,7 +481,7 @@ class ChatService:
         async for chunk_event in provider.stream(
             messages=messages,
             model=spec.id,
-            system=SYSTEM_PROMPT,
+            system=with_preset(SYSTEM_PROMPT, preset.system_prompt if preset else None),
             max_tokens=4096,
         ):
             if chunk_event.done:
@@ -504,6 +507,7 @@ class ChatService:
             usage_in,
             usage_out,
             0,
+            preset=preset,
         )
         yield {
             "event": "done",
@@ -528,6 +532,7 @@ class ChatService:
         *,
         record_usage: bool = True,
         report_artifact: dict | None = None,
+        preset: Preset | None = None,
     ) -> None:
         await self._messages.add(
             Message(
@@ -541,6 +546,8 @@ class ChatService:
                 input_tokens=in_tokens,
                 output_tokens=out_tokens,
                 latency_ms=latency_ms,
+                preset_id=preset.id if preset else None,
+                preset_version=preset.version if preset else None,
             )
         )
         await self._messages.commit()

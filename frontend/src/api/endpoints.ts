@@ -3,6 +3,10 @@
 import { http, tokenStore, BASE_URL } from './client'
 import type {
   Artifact,
+  Preset,
+  PresetFilter,
+  PresetInput,
+  PresetList,
   ArtifactDetail,
   ArtifactKind,
   AnalysisRun,
@@ -197,6 +201,30 @@ export const toolApi = {
       `/workspaces/${workspaceId}/conversations/${conversationId}/tools`,
       { slugs },
     ),
+}
+
+export const presetApi = {
+  list: (which: PresetFilter = 'all', search?: string) => {
+    const params = new URLSearchParams({ which })
+    if (search) params.set('search', search)
+    return http.get<PresetList>(`/presets?${params.toString()}`)
+  },
+
+  create: (input: PresetInput) => http.post<Preset>('/presets', input),
+
+  update: (id: string, input: Partial<PresetInput>) =>
+    http.patch<Preset>(`/presets/${id}`, input),
+
+  remove: (id: string) => http.delete<void>(`/presets/${id}`),
+
+  pin: (id: string) => http.put<Preset>(`/presets/${id}/pin`, {}),
+
+  unpin: (id: string) => http.delete<Preset>(`/presets/${id}/pin`),
+
+  publish: (id: string) => http.post<Preset>(`/presets/${id}/publish`, {}),
+
+  share: (id: string, userId: string) =>
+    http.post<Preset>(`/presets/${id}/share`, { user_id: userId }),
 }
 
 export const teamApi = {

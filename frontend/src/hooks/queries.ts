@@ -16,6 +16,7 @@ import {
 import {
   analysisApi,
   artifactApi,
+  presetApi,
   toolApi,
   authApi,
   conversationApi,
@@ -38,6 +39,8 @@ import type {
   ProjectVisibility,
   Role,
   TaskStatus,
+  PresetFilter,
+  PresetInput,
 } from '@/api/types'
 
 export const queryKeys = {
@@ -55,6 +58,7 @@ export const queryKeys = {
     ['artifacts', workspaceId, conversationId ?? 'all'] as const,
   artifact: (id: string) => ['artifact', id] as const,
   tools: (conversationId: string) => ['tools', conversationId] as const,
+  presets: (which: string, search: string) => ['presets', which, search] as const,
   organization: ['organization'] as const,
   orgMembers: ['organization', 'members'] as const,
   teams: ['teams'] as const,
@@ -276,6 +280,61 @@ export function useSetTools(workspaceId: string, conversationId: string) {
     onSuccess: (selection) => {
       queryClient.setQueryData(queryKeys.tools(conversationId), selection)
     },
+  })
+}
+
+export function usePresets(which: PresetFilter = 'all', search = '') {
+  return useQuery({
+    queryKey: queryKeys.presets(which, search),
+    queryFn: () => presetApi.list(which, search || undefined),
+  })
+}
+
+/** Every list is invalidated together: one edit can move a preset between tabs. */
+function useInvalidatePresets() {
+  const queryClient = useQueryClient()
+  return () => queryClient.invalidateQueries({ queryKey: ['presets'] })
+}
+
+export function useCreatePreset() {
+  const invalidate = useInvalidatePresets()
+  return useMutation({
+    mutationFn: (input: PresetInput) => presetApi.create(input),
+    onSuccess: invalidate,
+  })
+}
+
+export function useUpdatePreset() {
+  const invalidate = useInvalidatePresets()
+  return useMutation({
+    mutationFn: ({ id, input }: { id: string; input: Partial<PresetInput> }) =>
+      presetApi.update(id, input),
+    onSuccess: invalidate,
+  })
+}
+
+export function useDeletePreset() {
+  const invalidate = useInvalidatePresets()
+  return useMutation({
+    mutationFn: (id: string) => presetApi.remove(id),
+    onSuccess: invalidate,
+  })
+}
+
+export function useSetPresetPinned() {
+  const invalidate = useInvalidatePresets()
+  return useMutation({
+    mutationFn: ({ id, pinned }: { id: string; pinned: boolean }) =>
+      pinned ? presetApi.pin(id) : presetApi.unpin(id),
+    onSuccess: invalidate,
+  })
+}
+
+export function usePublishPreset() {
+  const invalidate = useInvalidatePresets()
+  return useMutation({
+    mutationFn: (id: string) => presetApi.publish(id),
+    onSuccess: invalidate,
   })
 }
 

@@ -13,7 +13,7 @@ import Markdown from 'react-markdown'
 
 import { ApiError } from '@/api/client'
 import { streamMessage, type StreamSource } from '@/api/stream'
-import type { AnalysisRun, Citation, Message } from '@/api/types'
+import type { AnalysisRun, Citation, Message, Preset } from '@/api/types'
 import { Button, EmptyState, ErrorNotice, Spinner } from '@/components/ui/primitives'
 import { ReportArtifact } from '@/features/analysis/ReportArtifact'
 import {
@@ -30,6 +30,7 @@ import {
 import { ContextGauge } from '@/features/chat/ContextGauge'
 import { ConversationHeader } from '@/features/chat/ConversationHeader'
 import { ToolsModal } from '@/features/tools/ToolsModal'
+import { PresetsModal } from '@/features/presets/PresetsModal'
 import { SuggestionsBar } from '@/features/tasks/SuggestionsBar'
 import { VoiceInput } from '@/features/voice/VoiceInput'
 import { cn } from '@/lib/utils'
@@ -81,6 +82,10 @@ export function ChatView({
   const [error, setError] = useState<string | null>(null)
   const [uploadError, setUploadError] = useState<string | null>(null)
   const [toolsOpen, setToolsOpen] = useState(false)
+  const [presetsOpen, setPresetsOpen] = useState(false)
+  // The preset attached to the next message. Held as the whole row rather than
+  // the slug so the chip can name it; only the slug is ever sent.
+  const [preset, setPreset] = useState<Preset | null>(null)
 
   const bottomRef = useRef<HTMLDivElement>(null)
   const abortRef = useRef<AbortController | null>(null)
@@ -136,6 +141,9 @@ export function ChatView({
       {
         content: question,
         ...(scopedDocumentIds.length > 0 && { document_ids: scopedDocumentIds }),
+        // The slash command, never the prompt text: the instruction is read
+        // from the row server-side.
+        ...(preset && { preset_slug: preset.slug }),
       },
       {
         onSources: setStreamingSources,
@@ -293,6 +301,21 @@ export function ChatView({
             </div>
           )}
 
+          {preset && (
+            <div className="mb-2 flex items-center gap-2">
+              <span className="inline-flex items-center gap-1 rounded-full bg-accent-soft px-2 py-0.5 text-xs font-medium text-accent-strong">
+                /{preset.slug}
+              </span>
+              <button
+                type="button"
+                onClick={() => setPreset(null)}
+                className="text-xs text-ink-muted underline-offset-2 hover:text-ink hover:underline"
+              >
+                Remove
+              </button>
+            </div>
+          )}
+
           {scopedDocumentIds.length > 0 && (
             <p className="mb-2 text-xs text-ink-muted">
               Searching {scopedDocumentIds.length} selected document
@@ -345,6 +368,17 @@ export function ChatView({
                 />
               )}
 
+              <button
+                type="button"
+                onClick={() => setPresetsOpen(true)}
+                aria-label="Presets"
+                title="Presets"
+                className="flex h-8 shrink-0 items-center gap-1 rounded-lg px-2 text-xs font-medium text-ink-muted transition-colors hover:bg-surface-sunken hover:text-ink"
+              >
+                <span className="text-base leading-none">/</span>
+                Presets
+              </button>
+
               <div className="flex-1" />
 
             {voice?.live_transcription && (
@@ -390,6 +424,16 @@ export function ChatView({
           />
         </div>
       </div>
+
+      {presetsOpen && (
+        <PresetsModal
+          onClose={() => setPresetsOpen(false)}
+          onApply={(chosen) => {
+            setPreset(chosen)
+            setPresetsOpen(false)
+          }}
+        />
+      )}
 
       {toolsOpen && conversationId && (
         <ToolsModal

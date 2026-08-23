@@ -10,7 +10,8 @@ Plan and estimates: [`workspaces-parity.md`](workspaces-parity.md).
 
 ## Current phase
 
-**E2 is done. Next unstarted block is Phase B — presets and slash commands.**
+**Phase B is done: presets exist, can be shared, and apply to a turn by name.
+Next unstarted block is Phase C — history and conversation management.**
 
 | Step | State |
 |---|---|
@@ -29,8 +30,8 @@ Plan and estimates: [`workspaces-parity.md`](workspaces-parity.md).
 | Phase | State |
 |---|---|
 | A — Artifacts | ✅ done |
-| B — Presets and slash commands | 🔨 next |
-| C — History and conversation management | ⬜ not started |
+| B — Presets and slash commands | ✅ done |
+| C — History and conversation management | 🔨 next |
 | D — Shell and Spaces polish | ⬜ not started |
 | E — Schedules | ⬜ not started |
 | E2 — Tools and integrations (MCP) | ✅ done |
@@ -54,6 +55,11 @@ Recorded so they are not relitigated in a later session.
 - **Tools arrive as MCP, not bespoke connectors.** One protocol adapter, then
   each integration is a server and a config row. Seventeen hand-written
   connectors is the wrong shape of work for one person.
+- **A preset never outranks the honesty rules.** It is prepended, so the
+  built-in prompt — cite every claim, never fill a gap from general knowledge —
+  is always the last word a model reads.
+- **`PUBLISHED` is not public.** Every preset scope stops at the organisation.
+  A system prompt encodes how a team works, and no scope crosses a tenant.
 - **A connected system is not a document.** MCP tools take the same path web
   search does — the no-hits path only — so a grounded answer's citations keep
   meaning "from your documents". The prompt tells the model to name the system
@@ -89,6 +95,7 @@ Recorded so they are not relitigated in a later session.
 
 Newest first. One line per shipped increment.
 
+- **Phase B** · Presets: named, shareable system prompts. Org-scoped, because how a team writes does not change between workspaces. A message names one by slug and never by prompt text — the instruction is read from the row, so a client cannot post its own system prompt and drop the honesty rules with it. The preset goes *before* the built-in prompt, never after, so "always answer confidently" cannot cancel the citation rules; there is a test on the ordering, not just the presence. The turn records which preset and version it ran under, since editing one would otherwise rewrite what a past answer was told. Wired into the streamed path as well as the plain POST — the stream is what the UI actually uses, and a preset that worked only on the POST would have looked built and done nothing. 31 tests.
 - **E2-3 health** · One probe per connected server answers both open questions at once: whether it is answering, and what its schemas really cost. Cached for a minute and shared with the answer path, so showing health does not make the next question slower, and bounded by a short timeout so a hanging server cannot hold the picker. The card now distinguishes connected from reachable — an unreachable server says so instead of looking fine with a switch that quietly does nothing — and `context_cost_tokens` is measured from the real `tools/list` rather than taken from whatever configuration guessed.
 - **E2-3 connected** · `MCP_SERVERS` is now the whole delivery mechanism: a JSON row declares a server, and a slug matching a placeholder upgrades that card rather than adding a second one. `auth_ref` names the environment variable holding the credential, never the credential — and a named variable that is unset, a duplicate slug, or plaintext in production are all boot-time refusals rather than call-time surprises. Tools are qualified by server (`wiki__search`) so two servers offering `search` stay apart. A server that is down costs its own tools and not the turn. 25 tests. Verified against a real MCP server over a real socket, not only `MockTransport`: handshake, the session the server then required on every later call, a `tools/list` answered as SSE, a `tools/call` answered as JSON, the credential resolved from `auth_ref`, and a wrong token refused.
 - **E2-3 loop** · The model can now call a tool this side runs. `generate` takes tool schemas and an executor; the Anthropic adapter loops on `tool_use` and hands results back, capped at eight rounds so a model that keeps calling cannot bill indefinitely. Every call is answered including the ones that fail — the API rejects a turn that leaves one open, and a model told nothing about a failure assumes it worked. A vendor without the loop declares `supports_client_tools = False` rather than accepting tools and ignoring them. Still not reachable by a user: no server is configured yet.

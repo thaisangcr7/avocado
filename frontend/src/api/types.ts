@@ -215,6 +215,45 @@ export interface Tool {
   tool_count: number | null
 }
 
+export type PresetScope = 'private' | 'org' | 'published'
+
+/** Which tab of the library. Mirrors `PresetFilter` on the server. */
+export type PresetFilter = 'all' | 'pinned' | 'mine' | 'native' | 'community' | 'shared'
+
+export interface Preset {
+  id: string
+  name: string
+  /** The slash command, without the slash. */
+  slug: string
+  description: string
+  system_prompt: string
+  model_hint: string | null
+  scope: PresetScope
+  is_native: boolean
+  version: number
+  created_by_user_id: string | null
+  created_at: string
+  updated_at: string
+  /** Reader-relative: the same preset renders differently for two people. */
+  pinned: boolean
+  is_mine: boolean
+  can_edit: boolean
+}
+
+export interface PresetList {
+  presets: Preset[]
+  total: number
+}
+
+export interface PresetInput {
+  name: string
+  description?: string
+  system_prompt: string
+  model_hint?: string | null
+  slug?: string | null
+  scope?: PresetScope
+}
+
 export interface ToolSelection {
   tools: Tool[]
   enabled_count: number
