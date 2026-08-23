@@ -3,6 +3,7 @@
 import { http, tokenStore, BASE_URL } from './client'
 import type {
   Artifact,
+  EnhanceResult,
   Schedule,
   ScheduleInput,
   ConversationPage,
@@ -258,6 +259,11 @@ export const historyApi = {
       `/workspaces/${workspaceId}/conversations/${conversationId}/messages/${messageId}/feedback`,
       { rating },
     ),
+}
+
+export const enhanceApi = {
+  rewrite: (workspaceId: string, draft: string) =>
+    http.post<EnhanceResult>(`/workspaces/${workspaceId}/enhance`, { draft }),
 }
 
 export const scheduleApi = {

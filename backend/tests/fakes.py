@@ -86,6 +86,7 @@ class FakeLLMProvider(LLMProvider):
             {
                 "model": model,
                 "system": system,
+                "max_tokens": max_tokens,
                 "messages": [m.content for m in messages],
                 "json_schema": json_schema,
                 "images": sum(len(m.images) for m in messages),

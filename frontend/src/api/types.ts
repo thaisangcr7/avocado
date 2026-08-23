@@ -259,6 +259,13 @@ export interface ScheduleInput {
   enabled?: boolean
 }
 
+export interface EnhanceResult {
+  draft: string
+  original: string
+  /** False when the model was unreachable, or returned an answer not a question. */
+  changed: boolean
+}
+
 export type PresetScope = 'private' | 'org' | 'published'
 
 /** Which tab of the library. Mirrors `PresetFilter` on the server. */

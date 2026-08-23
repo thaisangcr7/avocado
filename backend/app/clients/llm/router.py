@@ -44,6 +44,9 @@ class TaskType(StrEnum):
     CLASSIFICATION = "classification"
     TITLE = "title"
     RERANK = "rerank"
+    # Rewriting someone's half-typed question. Cheap on purpose: it runs while
+    # they wait, and a slow wand is one nobody presses twice.
+    ENHANCE = "enhance"
     # Quality-sensitive.
     SYNTHESIS = "synthesis"
     SUMMARIZATION = "summarization"
@@ -82,6 +85,7 @@ _TASK_TIER: dict[TaskType, str] = {
     TaskType.CLASSIFICATION: "fast",
     TaskType.TITLE: "fast",
     TaskType.RERANK: "fast",
+    TaskType.ENHANCE: "fast",
     TaskType.SUMMARIZATION: "balanced",
     TaskType.SYNTHESIS: "frontier",
     TaskType.VISION_EXTRACTION: "frontier",

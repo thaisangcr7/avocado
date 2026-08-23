@@ -26,6 +26,7 @@ import {
   useUploadDocument,
   useVoiceCapabilities,
   useWorkspaces,
+  useEnhanceDraft,
 } from '@/hooks/queries'
 import { ContextGauge } from '@/features/chat/ContextGauge'
 import { ConversationHeader } from '@/features/chat/ConversationHeader'
@@ -86,6 +87,10 @@ export function ChatView({
   // The preset attached to the next message. Held as the whole row rather than
   // the slug so the chip can name it; only the slug is ever sent.
   const [preset, setPreset] = useState<Preset | null>(null)
+  // Held so the wand can be undone. Rewriting someone's question without a way
+  // back is worse than not offering it.
+  const [beforeEnhance, setBeforeEnhance] = useState<string | null>(null)
+  const enhance = useEnhanceDraft(workspaceId)
 
   const bottomRef = useRef<HTMLDivElement>(null)
   const abortRef = useRef<AbortController | null>(null)
@@ -301,6 +306,22 @@ export function ChatView({
             </div>
           )}
 
+          {beforeEnhance !== null && (
+            <div className="mb-2 flex items-center gap-2">
+              <span className="text-xs text-ink-muted">Question rewritten.</span>
+              <button
+                type="button"
+                onClick={() => {
+                  setDraft(beforeEnhance)
+                  setBeforeEnhance(null)
+                }}
+                className="text-xs text-ink-muted underline-offset-2 hover:text-ink hover:underline"
+              >
+                Undo
+              </button>
+            </div>
+          )}
+
           {preset && (
             <div className="mb-2 flex items-center gap-2">
               <span className="inline-flex items-center gap-1 rounded-full bg-accent-soft px-2 py-0.5 text-xs font-medium text-accent-strong">
@@ -367,6 +388,26 @@ export function ChatView({
                   onOpen={() => setToolsOpen(true)}
                 />
               )}
+
+              <button
+                type="button"
+                disabled={!draft.trim() || enhance.isPending || isStreaming}
+                onClick={() => {
+                  const original = draft
+                  enhance.mutate(original, {
+                    onSuccess: (result) => {
+                      if (!result.changed) return
+                      setBeforeEnhance(original)
+                      setDraft(result.draft)
+                    },
+                  })
+                }}
+                aria-label="Improve this question"
+                title="Improve this question"
+                className="flex size-8 shrink-0 items-center justify-center rounded-lg text-base text-ink-muted transition-colors hover:bg-surface-sunken hover:text-ink disabled:opacity-50"
+              >
+                {enhance.isPending ? <Spinner className="size-3.5" /> : '✦'}
+              </button>
 
               <button
                 type="button"

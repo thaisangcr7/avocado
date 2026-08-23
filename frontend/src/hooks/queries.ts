@@ -16,6 +16,7 @@ import {
 import {
   analysisApi,
   artifactApi,
+  enhanceApi,
   historyApi,
   presetApi,
   scheduleApi,
@@ -423,6 +424,12 @@ export function useDeleteSchedule(workspaceId: string) {
     mutationFn: (id: string) => scheduleApi.remove(workspaceId, id),
     onSuccess: () =>
       queryClient.invalidateQueries({ queryKey: queryKeys.schedules(workspaceId) }),
+  })
+}
+
+export function useEnhanceDraft(workspaceId: string) {
+  return useMutation({
+    mutationFn: (draft: string) => enhanceApi.rewrite(workspaceId, draft),
   })
 }
 

@@ -65,6 +65,7 @@ from app.services.analysis_service import AnalysisService
 from app.services.artifact_service import ArtifactService
 from app.services.auth_service import AuthService
 from app.services.chat_service import ChatService
+from app.services.enhance_service import EnhanceService
 from app.services.ingestion_service import IngestionService
 from app.services.invitation_service import InvitationService
 from app.services.knowledge_service import KnowledgeService
@@ -304,6 +305,13 @@ def get_schedule_service(schedules: SchedulesDep, presets: PresetsDep) -> Schedu
 
 
 ScheduleServiceDep = Annotated[ScheduleService, Depends(get_schedule_service)]
+
+
+def get_enhance_service(router: RouterDep) -> EnhanceService:
+    return EnhanceService(router=router)
+
+
+EnhanceServiceDep = Annotated[EnhanceService, Depends(get_enhance_service)]
 
 
 def get_artifact_service(artifacts: ArtifactsDep, router: RouterDep) -> ArtifactService:

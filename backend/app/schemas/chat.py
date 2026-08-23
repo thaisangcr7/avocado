@@ -44,6 +44,21 @@ class ConversationPage(ApiModel):
     offset: int
 
 
+class EnhanceRequest(BaseModel):
+    draft: str = Field(min_length=1, max_length=2000)
+
+
+class EnhanceResponse(ApiModel):
+    """The rewritten draft, and the original so a client can offer an undo."""
+
+    draft: str
+    original: str
+    # False when the model could not be reached or returned something that
+    # looked like an answer rather than a question. The client shows the draft
+    # unchanged rather than pretending it improved.
+    changed: bool
+
+
 class FeedbackRequest(BaseModel):
     """`None` withdraws a rating, which is different from never having given one."""
 

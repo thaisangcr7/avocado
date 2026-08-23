@@ -10,7 +10,7 @@ from typing import Literal
 from fastapi import APIRouter, Query, status
 from fastapi.responses import PlainTextResponse, StreamingResponse
 
-from app.api.deps import ChatServiceDep, WorkspaceContextDep
+from app.api.deps import ChatServiceDep, EnhanceServiceDep, WorkspaceContextDep
 from app.core.errors import AvocadoError
 from app.core.logging import get_logger
 from app.schemas.chat import (
@@ -20,6 +20,8 @@ from app.schemas.chat import (
     ConversationPage,
     ConversationResponse,
     ConversationUpdate,
+    EnhanceRequest,
+    EnhanceResponse,
     FeedbackRequest,
     MessageCreate,
     MessageResponse,
@@ -153,6 +155,21 @@ async def list_messages(
     service: ChatServiceDep,
 ) -> list[MessageResponse]:
     return await service.messages(conversation_id, context.id, user_id=context.user.id)
+
+
+@router.post("/workspaces/{workspace_id}/enhance", response_model=EnhanceResponse)
+async def enhance_draft(
+    payload: EnhanceRequest,
+    context: WorkspaceContextDep,
+    service: EnhanceServiceDep,
+) -> EnhanceResponse:
+    """Sharpen a half-typed question before it is sent."""
+    rewritten = await service.enhance(payload.draft)
+    return EnhanceResponse(
+        draft=rewritten,
+        original=payload.draft,
+        changed=rewritten.strip() != payload.draft.strip(),
+    )
 
 
 @router.put(

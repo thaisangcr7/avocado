@@ -10,8 +10,9 @@ Plan and estimates: [`workspaces-parity.md`](workspaces-parity.md).
 
 ## Current phase
 
-**Phase E is done. What is left of the parity plan is E3's last two items,
-then Phase F (collaboration) and G (enterprise trim).**
+**Phases A–E and E2/E3 are done. What is left is Phase G (enterprise trim)
+and Phase F (collaboration) — which the plan itself says to do last, or not
+at all.**
 
 | Step | State |
 |---|---|
@@ -35,7 +36,7 @@ then Phase F (collaboration) and G (enterprise trim).**
 | D — Shell and Spaces polish | ✅ done |
 | E — Schedules | ✅ done |
 | E2 — Tools and integrations (MCP) | ✅ done |
-| E3 — Conversation instrumentation | 🔨 gauge done; enhance + welcome left |
+| E3 — Conversation instrumentation | ✅ gauge, enhance done; landing pane covers welcome |
 | F — Collaboration | ⬜ not started |
 | G — Enterprise trim | ⬜ not started |
 
@@ -95,6 +96,7 @@ Recorded so they are not relitigated in a later session.
 
 Newest first. One line per shipped increment.
 
+- **E3-2** · The prompt wand. Cheap tier on purpose: it runs while someone waits with their hand on the keyboard, and a slow wand is one nobody presses twice. The rule worth guarding is that it must not *answer* — a model that helpfully replies instead of sharpening leaves the user about to send an answer as their question, so a reply that comes back far longer than the draft is discarded and the original kept. Rewriting text someone typed is a destructive edit, so there is an undo. 7 backend tests, 3 frontend.
 - **Phase E** · Schedules: a prompt, a recurrence, optionally a preset. Each run opens a conversation and sends it, so a scheduled answer lands in history with its citations rather than being a special kind of object. `croniter` rather than a hand-rolled parser, and the expression is validated at the boundary — an invalid cron does not fail loudly, it simply never fires. One arq cron entry sweeping every minute, because arq's cron jobs are static and a user's schedule is not. Two executor properties have tests: one failing schedule cannot stop another tenant's, and a failure still moves the clock forward rather than retrying for ever. The UI leads with the next run time and the last error, since a schedule failing quietly for a week is what this has to be designed against. 11 backend tests, 7 frontend.
 - **Phase D** · Presets reachable from the rail, not only the composer. Keyboard shortcuts (⇧N, ⇧H, ⇧P) that refuse to fire while someone is typing — these are bare letters, so without that guard a capital N in the composer would start a new conversation and lose the question. "Workspace" reads as "Space" in the UI; `workspace_id` is untouched. The theme switcher and the three-store library rail were already done, so this phase was smaller than the plan's estimate. 5 tests.
 - **Phase C** · History as a page rather than a longer sidebar scroll: search, filter, numbered pagination, inline rename, pin, archive, download, delete — and a message count that comes back in the same query as a correlated scalar, since a list page is exactly where an N+1 bites. No status chip: every chat is complete the moment it stops, so "Completed" on every row would be decoration. Export is markdown with its citations, fetched through the authenticated client rather than a bare link, which would have 401'd silently. Plus message feedback — two values rather than a scale, one row per reader, showing your own rating and never someone else's. 21 backend tests, 9 frontend.
