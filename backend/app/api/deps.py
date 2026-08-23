@@ -498,6 +498,11 @@ def get_chat_service(
     router: RouterDep,
     usage: UsageServiceDep,
     tools: ConversationToolsDep,
+    presets: PresetsDep,
+    pins: PresetPinsDep,
+    shares: PresetSharesDep,
+    users: UsersDep,
+    access: MembershipServiceDep,
 ) -> ChatService:
     return ChatService(
         conversations=conversations,
@@ -505,6 +510,9 @@ def get_chat_service(
         documents=documents,
         tools=tools,
         servers=request.app.state.mcp_servers,
+        presets=PresetService(
+            presets=presets, pins=pins, shares=shares, users=users, access=access
+        ),
         rag=RAGService(chunks=chunks, embeddings=embeddings, router=router),
         analysis=AnalysisService(
             runs=runs,

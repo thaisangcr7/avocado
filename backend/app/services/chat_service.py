@@ -14,6 +14,7 @@ from app.core.logging import get_logger
 from app.models.conversations import Conversation, Message
 from app.models.documents import Document
 from app.models.enums import DocumentType, MessageRole, ToolKind
+from app.models.presets import Preset
 from app.repositories.conversations import ConversationRepository, MessageRepository
 from app.repositories.documents import DocumentRepository
 from app.repositories.tools import ConversationToolRepository
@@ -25,6 +26,7 @@ from app.schemas.chat import (
     MessageResponse,
 )
 from app.services.analysis_service import AnalysisService
+from app.services.preset_service import PresetService
 from app.services.rag_service import SYSTEM_PROMPT, RAGService
 from app.services.report_service import ReportService
 from app.services.tool_catalogue import BY_SLUG, catalogue_for
@@ -86,12 +88,14 @@ class ChatService:
         usage: UsageService,
         tools: ConversationToolRepository | None = None,
         servers: McpServers | None = None,
+        presets: PresetService | None = None,
     ) -> None:
         self._conversations = conversations
         self._messages = messages
         self._documents = documents
         self._tools = tools
         self._servers = servers
+        self._presets = presets
         self._rag = rag
         self._analysis = analysis
         self._report = report
@@ -168,6 +172,8 @@ class ChatService:
         )
         await self._messages.commit()
 
+        preset = await self._resolve_preset(payload.preset_slug, user_id=user_id, org_id=org_id)
+
         try:
             (
                 answer,
@@ -185,6 +191,7 @@ class ChatService:
                 web_search=await self._web_search_enabled(conversation_id),
                 tools=ToolRunner(self._servers) if self._servers else None,
                 tool_slugs=await self._mcp_servers_enabled(conversation_id),
+                preset_prompt=preset.system_prompt if preset else None,
             )
         except AvocadoError as exc:
             # The user's turn genuinely happened, so the question stays in the
@@ -205,6 +212,8 @@ class ChatService:
                 input_tokens=in_tokens,
                 output_tokens=out_tokens,
                 latency_ms=latency_ms,
+                preset_id=preset.id if preset else None,
+                preset_version=preset.version if preset else None,
             )
         )
 
@@ -244,6 +253,23 @@ class ChatService:
         if choices:
             return choices.get(WEB_SEARCH_SLUG, False)
         return BY_SLUG[WEB_SEARCH_SLUG].enabled_by_default
+
+    async def _resolve_preset(
+        self, slug: str | None, *, user_id: uuid.UUID, org_id: uuid.UUID
+    ) -> Preset | None:
+        """Turn a slash command into the preset row, or nothing.
+
+        A slug that resolves to nothing is not an error. The user typed
+        something into a composer; failing the whole turn over a typo would be
+        worse than answering without it, and the recorded `preset_id` says
+        plainly whether one was applied.
+        """
+        if not slug or self._presets is None:
+            return None
+        preset = await self._presets.resolve_slug(slug, user_id=user_id, org_id=org_id)
+        if preset is None:
+            log.info("preset_not_found", slug=slug)
+        return preset
 
     async def _mcp_servers_enabled(self, conversation_id: uuid.UUID) -> list[str]:
         """Which connected servers this conversation has switched on.

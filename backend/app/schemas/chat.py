@@ -51,6 +51,10 @@ class MessageCreate(BaseModel):
     content: str = Field(min_length=1, max_length=8000)
     # Restrict retrieval to specific documents. Empty means the whole workspace.
     document_ids: list[uuid.UUID] = Field(default_factory=list, max_length=50)
+    # Apply a preset to this turn, by its slash command. Deliberately the slug
+    # and not the prompt: the text is read from the row server-side, so a
+    # client cannot post its own system prompt and drop the honesty rules.
+    preset_slug: str | None = Field(default=None, max_length=80)
 
 
 class MessageResponse(ApiModel):
@@ -63,6 +67,9 @@ class MessageResponse(ApiModel):
     report_artifact: dict | None = None
     # True when this records a failed generation rather than an answer.
     failed: bool = False
+    # Which preset this turn ran under, at which version. Null for most turns.
+    preset_id: uuid.UUID | None = None
+    preset_version: int | None = None
     model_used: str | None
     input_tokens: int | None
     output_tokens: int | None

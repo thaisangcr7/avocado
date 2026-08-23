@@ -80,4 +80,13 @@ class Message(Base, UUIDPrimaryKeyMixin, TimestampMixin):
     output_tokens: Mapped[int | None] = mapped_column(Integer)
     latency_ms: Mapped[int | None] = mapped_column(Integer)
 
+    # Which preset this turn ran under, and at which version. Recorded rather
+    # than looked up later, because a preset can be edited: without the version
+    # a changed prompt would silently rewrite what a past answer was told.
+    # SET NULL rather than CASCADE — deleting a preset must not delete history.
+    preset_id: Mapped[uuid.UUID | None] = mapped_column(
+        PGUUID(as_uuid=True), ForeignKey("presets.id", ondelete="SET NULL")
+    )
+    preset_version: Mapped[int | None] = mapped_column(Integer)
+
     conversation: Mapped[Conversation] = relationship(back_populates="messages")
