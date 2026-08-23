@@ -24,6 +24,7 @@ from app.models.enums import (
     ToolKind,
     TranscriptStatus,
 )
+from app.models.feedback import MessageFeedback
 from app.models.invitations import Invitation, InvitationStatus
 from app.models.knowledge import DocumentClassification
 from app.models.presets import Preset, PresetPin, PresetShare
@@ -52,6 +53,7 @@ __all__ = [
     "Invitation",
     "InvitationStatus",
     "Message",
+    "MessageFeedback",
     "MessageRole",
     "Organization",
     "Preset",

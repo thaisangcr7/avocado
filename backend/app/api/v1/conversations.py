@@ -20,6 +20,7 @@ from app.schemas.chat import (
     ConversationPage,
     ConversationResponse,
     ConversationUpdate,
+    FeedbackRequest,
     MessageCreate,
     MessageResponse,
 )
@@ -151,7 +152,27 @@ async def list_messages(
     context: WorkspaceContextDep,
     service: ChatServiceDep,
 ) -> list[MessageResponse]:
-    return await service.messages(conversation_id, context.id)
+    return await service.messages(conversation_id, context.id, user_id=context.user.id)
+
+
+@router.put(
+    "/workspaces/{workspace_id}/conversations/{conversation_id}/messages/{message_id}/feedback",
+    response_model=Ack,
+)
+async def rate_message(
+    message_id: uuid.UUID,
+    payload: FeedbackRequest,
+    context: WorkspaceContextDep,
+    service: ChatServiceDep,
+) -> Ack:
+    """Say whether an answer was any good. Sending no rating withdraws it."""
+    await service.rate(
+        message_id=message_id,
+        workspace_id=context.id,
+        user_id=context.user.id,
+        rating=payload.rating,
+    )
+    return Ack(message="Recorded." if payload.rating else "Withdrawn.")
 
 
 @router.post(

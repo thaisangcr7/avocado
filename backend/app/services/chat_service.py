@@ -13,10 +13,11 @@ from app.core.errors import AvocadoError, NotFoundError
 from app.core.logging import get_logger
 from app.models.conversations import Conversation, Message
 from app.models.documents import Document
-from app.models.enums import DocumentType, MessageRole, ToolKind
+from app.models.enums import DocumentType, FeedbackRating, MessageRole, ToolKind
 from app.models.presets import Preset
 from app.repositories.conversations import ConversationRepository, MessageRepository
 from app.repositories.documents import DocumentRepository
+from app.repositories.feedback import MessageFeedbackRepository
 from app.repositories.tools import ConversationToolRepository
 from app.schemas.chat import (
     ChatTurnResponse,
@@ -90,6 +91,7 @@ class ChatService:
         tools: ConversationToolRepository | None = None,
         servers: McpServers | None = None,
         presets: PresetService | None = None,
+        feedback: MessageFeedbackRepository | None = None,
     ) -> None:
         self._conversations = conversations
         self._messages = messages
@@ -97,6 +99,7 @@ class ChatService:
         self._tools = tools
         self._servers = servers
         self._presets = presets
+        self._feedback = feedback
         self._rag = rag
         self._analysis = analysis
         self._report = report
@@ -211,11 +214,44 @@ class ChatService:
         await self._conversations.commit()
 
     async def messages(
-        self, conversation_id: uuid.UUID, workspace_id: uuid.UUID
+        self,
+        conversation_id: uuid.UUID,
+        workspace_id: uuid.UUID,
+        *,
+        user_id: uuid.UUID | None = None,
     ) -> list[MessageResponse]:
         await self._require(conversation_id, workspace_id)
         rows = await self._messages.list_for_conversation(conversation_id, workspace_id)
-        return [MessageResponse.model_validate(m) for m in rows]
+        responses = [MessageResponse.model_validate(m) for m in rows]
+
+        # One query for the whole thread rather than one per message.
+        if self._feedback is not None and user_id is not None:
+            ratings = await self._feedback.ratings_for(conversation_id, user_id)
+            for response in responses:
+                response.feedback = ratings.get(response.id)
+        return responses
+
+    async def rate(
+        self,
+        *,
+        message_id: uuid.UUID,
+        workspace_id: uuid.UUID,
+        user_id: uuid.UUID,
+        rating: FeedbackRating | None,
+    ) -> None:
+        """Record what a reader thought of one answer.
+
+        The only honest signal this product gets about answer quality:
+        retrieval metrics can say the right chunks came back, not whether the
+        answer built from them was any use.
+        """
+        if self._feedback is None:
+            raise NotFoundError("Message not found.")
+        if not await self._feedback.belongs_to_workspace(message_id, workspace_id):
+            raise NotFoundError("Message not found.")
+        await self._feedback.set_rating(message_id=message_id, user_id=user_id, rating=rating)
+        await self._feedback.commit()
+        log.info("message_rated", message=str(message_id), rating=rating.value if rating else None)
 
     async def send(
         self,

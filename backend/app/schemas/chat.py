@@ -7,7 +7,7 @@ from datetime import datetime
 
 from pydantic import BaseModel, Field
 
-from app.models.enums import MessageRole
+from app.models.enums import FeedbackRating, MessageRole
 from app.schemas.common import ApiModel
 
 
@@ -42,6 +42,12 @@ class ConversationPage(ApiModel):
     total: int
     limit: int
     offset: int
+
+
+class FeedbackRequest(BaseModel):
+    """`None` withdraws a rating, which is different from never having given one."""
+
+    rating: FeedbackRating | None = None
 
 
 class ConversationFlags(BaseModel):
@@ -91,6 +97,9 @@ class MessageResponse(ApiModel):
     # Which preset this turn ran under, at which version. Null for most turns.
     preset_id: uuid.UUID | None = None
     preset_version: int | None = None
+    # This reader's own rating, not a tally. Two people can disagree about the
+    # same answer, and showing someone else's thumb as theirs would be a lie.
+    feedback: FeedbackRating | None = None
     model_used: str | None
     input_tokens: int | None
     output_tokens: int | None

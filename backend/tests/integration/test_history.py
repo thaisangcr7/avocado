@@ -195,3 +195,95 @@ async def test_history_never_crosses_a_workspace(client, account):
     )
     assert flags.status_code == 404
     assert export.status_code == 404
+
+
+# --- message feedback -----------------------------------------------------
+
+
+async def answered_thread(client, account, fake_llm) -> tuple[str, str]:
+    """A thread with one answer in it. Returns (conversation_id, message_id)."""
+    conversation_id = await thread(client, account, "Rated")
+    fake_llm.responses = ["An answer worth rating."]
+    turn = await client.post(
+        f"/workspaces/{account['workspace_id']}/conversations/{conversation_id}/messages",
+        json={"content": "A question"},
+        headers=account["headers"],
+    )
+    return conversation_id, turn.json()["assistant_message"]["id"]
+
+
+def feedback_path(account, conversation_id, message_id) -> str:
+    return (
+        f"/workspaces/{account['workspace_id']}/conversations/{conversation_id}"
+        f"/messages/{message_id}/feedback"
+    )
+
+
+async def messages_of(client, account, conversation_id) -> list[dict]:
+    return (
+        await client.get(
+            f"/workspaces/{account['workspace_id']}/conversations/{conversation_id}/messages",
+            headers=account["headers"],
+        )
+    ).json()
+
+
+async def test_an_answer_can_be_rated_and_the_rating_survives_a_reload(client, account, fake_llm):
+    conversation_id, message_id = await answered_thread(client, account, fake_llm)
+
+    rated = await client.put(
+        feedback_path(account, conversation_id, message_id),
+        json={"rating": "up"},
+        headers=account["headers"],
+    )
+
+    assert rated.status_code == 200, rated.text
+    rows = await messages_of(client, account, conversation_id)
+    assert next(m for m in rows if m["id"] == message_id)["feedback"] == "up"
+
+
+async def test_changing_your_mind_replaces_the_rating(client, account, fake_llm):
+    """Not a second row: a count of thumbs has to stay a count of people."""
+    conversation_id, message_id = await answered_thread(client, account, fake_llm)
+    path = feedback_path(account, conversation_id, message_id)
+
+    await client.put(path, json={"rating": "up"}, headers=account["headers"])
+    await client.put(path, json={"rating": "down"}, headers=account["headers"])
+
+    rows = await messages_of(client, account, conversation_id)
+    assert next(m for m in rows if m["id"] == message_id)["feedback"] == "down"
+
+
+async def test_a_rating_can_be_withdrawn(client, account, fake_llm):
+    """Withdrawing is different from never having rated, and both read as null."""
+    conversation_id, message_id = await answered_thread(client, account, fake_llm)
+    path = feedback_path(account, conversation_id, message_id)
+    await client.put(path, json={"rating": "up"}, headers=account["headers"])
+
+    await client.put(path, json={"rating": None}, headers=account["headers"])
+
+    rows = await messages_of(client, account, conversation_id)
+    assert next(m for m in rows if m["id"] == message_id)["feedback"] is None
+
+
+async def test_an_unrated_message_reads_as_unrated(client, account, fake_llm):
+    conversation_id, message_id = await answered_thread(client, account, fake_llm)
+
+    rows = await messages_of(client, account, conversation_id)
+
+    assert next(m for m in rows if m["id"] == message_id)["feedback"] is None
+
+
+async def test_feedback_cannot_be_left_across_a_workspace(client, account, fake_llm):
+    from tests.conftest import register_account
+
+    conversation_id, message_id = await answered_thread(client, account, fake_llm)
+    outsider = await register_account(client, email="rater@other.example", org="Other")
+
+    response = await client.put(
+        feedback_path(outsider, conversation_id, message_id),
+        json={"rating": "down"},
+        headers=outsider["headers"],
+    )
+
+    assert response.status_code == 404

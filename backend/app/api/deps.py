@@ -41,6 +41,7 @@ from app.repositories.documents import (
     DocumentRepository,
     DocumentTableRepository,
 )
+from app.repositories.feedback import MessageFeedbackRepository
 from app.repositories.invitations import InvitationRepository
 from app.repositories.knowledge import ClassificationRepository
 from app.repositories.presets import (
@@ -151,6 +152,7 @@ def _repo(cls):  # type: ignore[no-untyped-def]
 
 UsersDep = Annotated[UserRepository, Depends(_repo(UserRepository))]
 PresetsDep = Annotated[PresetRepository, Depends(_repo(PresetRepository))]
+FeedbackDep = Annotated[MessageFeedbackRepository, Depends(_repo(MessageFeedbackRepository))]
 PresetPinsDep = Annotated[PresetPinRepository, Depends(_repo(PresetPinRepository))]
 PresetSharesDep = Annotated[PresetShareRepository, Depends(_repo(PresetShareRepository))]
 OrgsDep = Annotated[OrganizationRepository, Depends(_repo(OrganizationRepository))]
@@ -503,6 +505,7 @@ def get_chat_service(
     shares: PresetSharesDep,
     users: UsersDep,
     access: MembershipServiceDep,
+    feedback: FeedbackDep,
 ) -> ChatService:
     return ChatService(
         conversations=conversations,
@@ -513,6 +516,7 @@ def get_chat_service(
         presets=PresetService(
             presets=presets, pins=pins, shares=shares, users=users, access=access
         ),
+        feedback=feedback,
         rag=RAGService(chunks=chunks, embeddings=embeddings, router=router),
         analysis=AnalysisService(
             runs=runs,

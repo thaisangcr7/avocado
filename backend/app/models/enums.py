@@ -140,6 +140,18 @@ class ArtifactAuthor(StrEnum):
     USER = "user"
 
 
+class FeedbackRating(StrEnum):
+    """What a reader thought of one answer.
+
+    Two values, not five. A scale invites the middle, and the middle says
+    nothing that can be acted on — the useful question is whether this answer
+    was good enough to keep.
+    """
+
+    UP = "up"
+    DOWN = "down"
+
+
 class PresetScope(StrEnum):
     """Who can see a preset.
 
