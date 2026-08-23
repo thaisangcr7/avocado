@@ -10,6 +10,8 @@ from __future__ import annotations
 
 from typing import Any
 
+from arq import cron
+
 from app.clients.embeddings.providers import build_embedding_provider
 from app.clients.llm.router import ModelRouter, ProviderRegistry
 from app.clients.storage.factory import build_storage_client
@@ -18,7 +20,11 @@ from app.core.config import get_settings
 from app.core.logging import configure_logging, get_logger
 from app.db.rls import install_session_identity
 from app.db.session import create_engine, create_session_factory
-from app.worker.tasks import arq_ingest_document, arq_transcribe_recording
+from app.worker.tasks import (
+    arq_ingest_document,
+    arq_run_due_schedules,
+    arq_transcribe_recording,
+)
 
 log = get_logger(__name__)
 
@@ -61,6 +67,11 @@ def _redis_settings():  # type: ignore[no-untyped-def]
 
 class WorkerSettings:
     functions = [arq_ingest_document, arq_transcribe_recording]
+    # Schedules are stored per row with their own cron, so this is a single
+    # sweep rather than one arq cron entry per schedule — those are static and
+    # a user's schedule is not. A minute is the finest granularity cron itself
+    # offers, so sweeping more often than that would only add load.
+    cron_jobs = [cron(arq_run_due_schedules, minute=set(range(60)), run_at_startup=False)]
     on_startup = startup
     on_shutdown = shutdown
     redis_settings = _redis_settings()

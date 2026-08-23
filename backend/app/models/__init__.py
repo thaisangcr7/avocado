@@ -29,6 +29,7 @@ from app.models.invitations import Invitation, InvitationStatus
 from app.models.knowledge import DocumentClassification
 from app.models.presets import Preset, PresetPin, PresetShare
 from app.models.projects import Project, ProjectMember, Task
+from app.models.schedules import Schedule
 from app.models.tenancy import Organization, Team, TeamMembership, User, Workspace
 from app.models.tools import ConversationTool
 from app.models.usage import ApiUsageLog
@@ -64,6 +65,7 @@ __all__ = [
     "ProjectStatus",
     "ProjectVisibility",
     "Role",
+    "Schedule",
     "SuggestionKind",
     "Task",
     "TaskStatus",

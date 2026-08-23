@@ -198,3 +198,135 @@ async def _classify_quietly(
         )
     except Exception:
         log.debug("post_ingest_classification_skipped", exc_info=True)
+
+
+async def run_due_schedules(
+    *,
+    session_factory: Any,
+    model_router: ModelRouter,
+    embeddings: EmbeddingProvider,
+) -> int:
+    """Run every schedule whose time has come. Returns how many fired.
+
+    Each one opens a conversation and sends its prompt, so the answer lands
+    exactly where every other answer lands — in history, with its citations,
+    readable later. A scheduled answer is not a special kind of object.
+
+    One schedule failing must not stop the sweep. A broken prompt in one
+    workspace would otherwise silently stop every other tenant's schedules,
+    which is the worst possible shape for this bug: invisible, and someone
+    else's fault.
+    """
+    from datetime import UTC, datetime
+
+    from app.models.conversations import Conversation, Message
+    from app.models.enums import MessageRole
+    from app.repositories.conversations import ConversationRepository, MessageRepository
+    from app.repositories.presets import PresetRepository
+    from app.repositories.schedules import ScheduleRepository
+    from app.services.rag_service import RAGService
+    from app.services.schedule_service import next_run_after
+
+    now = datetime.now(UTC)
+    fired = 0
+
+    # The due list is read with no workspace identity because it spans tenants
+    # by design; every *action* below re-scopes to the row's own workspace.
+    set_identity()
+    async with session_scope(session_factory) as session:
+        due = await ScheduleRepository(session).due(now)
+        pending = [(s.id, s.workspace_id) for s in due]
+
+    for schedule_id, workspace_id in pending:
+        set_identity(workspace_id=workspace_id)
+        try:
+            async with session_scope(session_factory) as session:
+                schedules = ScheduleRepository(session)
+                schedule = await schedules.get_scoped(schedule_id, workspace_id)
+                if schedule is None or not schedule.enabled:
+                    continue
+
+                preset = None
+                if schedule.preset_id is not None:
+                    preset = await PresetRepository(session).get(schedule.preset_id)
+
+                conversations = ConversationRepository(session)
+                messages = MessageRepository(session)
+                conversation = await conversations.add(
+                    Conversation(
+                        workspace_id=workspace_id,
+                        user_id=schedule.created_by_user_id,
+                        title=schedule.name,
+                    )
+                )
+                await conversations.commit()
+
+                rag = RAGService(
+                    chunks=ChunkRepository(session),
+                    embeddings=embeddings,
+                    router=model_router,
+                )
+                answer, citations, model_used, in_tokens, out_tokens, latency = await rag.answer(
+                    workspace_id=workspace_id,
+                    question=schedule.prompt,
+                    history=[],
+                    preferred_model=None,
+                    preset_prompt=preset.system_prompt if preset else None,
+                )
+
+                await messages.add(
+                    Message(
+                        conversation_id=conversation.id,
+                        workspace_id=workspace_id,
+                        role=MessageRole.USER,
+                        content=schedule.prompt,
+                    )
+                )
+                await messages.add(
+                    Message(
+                        conversation_id=conversation.id,
+                        workspace_id=workspace_id,
+                        role=MessageRole.ASSISTANT,
+                        content=answer,
+                        citations=[c.model_dump(mode="json") for c in citations],
+                        model_used=model_used,
+                        input_tokens=in_tokens,
+                        output_tokens=out_tokens,
+                        latency_ms=latency,
+                        preset_id=preset.id if preset else None,
+                        preset_version=preset.version if preset else None,
+                    )
+                )
+
+                schedule.last_run_at = now
+                schedule.last_error = None
+                schedule.next_run_at = next_run_after(schedule.cron, now)
+                await schedules.commit()
+                fired += 1
+                log.info("schedule_ran", schedule=str(schedule_id))
+
+        except Exception as exc:  # noqa: BLE001 - one bad schedule must not stop the rest
+            log.warning("schedule_failed", schedule=str(schedule_id), error=str(exc))
+            # Record the failure and still move the clock forward. A schedule
+            # that keeps its old `next_run_at` after failing would be retried on
+            # every tick for ever.
+            set_identity(workspace_id=workspace_id)
+            async with session_scope(session_factory) as session:
+                schedules = ScheduleRepository(session)
+                schedule = await schedules.get_scoped(schedule_id, workspace_id)
+                if schedule is not None:
+                    schedule.last_run_at = now
+                    schedule.last_error = str(exc)[:500]
+                    schedule.next_run_at = next_run_after(schedule.cron, now)
+                    await schedules.commit()
+
+    return fired
+
+
+async def arq_run_due_schedules(ctx: dict[str, Any]) -> int:
+    """Arq cron entry point. Resources come from the worker's startup context."""
+    return await run_due_schedules(
+        session_factory=ctx["session_factory"],
+        model_router=ctx["model_router"],
+        embeddings=ctx["embeddings"],
+    )

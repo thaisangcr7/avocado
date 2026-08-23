@@ -13,6 +13,9 @@ greenlet==3.1.1
 # --- Cache / queue ---
 redis==5.2.1
 arq==0.26.3
+# Computes the next run time for a user-defined schedule. Hand-rolling a cron
+# parser is where day-of-week semantics and DST quietly go wrong.
+croniter==6.0.0
 # --- Security ---
 pyjwt==2.10.1
 argon2-cffi==23.1.0
