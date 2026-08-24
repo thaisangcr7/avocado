@@ -576,6 +576,9 @@ function StartHere({
     )
   }
 
+  const spreadsheets = ready.filter(
+    (doc) => doc.doc_type === 'xlsx' || doc.doc_type === 'csv',
+  )
   const limited = buildOpenings(ready).slice(0, 6)
 
   return (
