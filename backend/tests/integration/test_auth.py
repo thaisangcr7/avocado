@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import json
+
 import pytest
 
 from tests.conftest import register_account
@@ -119,3 +121,38 @@ async def test_errors_use_the_problem_details_envelope(client):
     assert {"type", "title", "status", "detail"} <= body.keys()
     # A request id is always present so a failure can be traced in the logs.
     assert body["request_id"]
+
+
+async def test_demo_session_is_not_exposed_when_disabled(client):
+    response = await client.post("/auth/demo-session", json={})
+    assert response.status_code == 404
+
+
+async def test_demo_session_issues_tokens_from_manifest_when_enabled(client, app, tmp_path):
+    account = await register_account(client, email="demo@acme.com")
+
+    manifest_path = tmp_path / "manifest.json"
+    manifest_path.write_text(
+        json.dumps(
+            {
+                "owner": {
+                    "email": "demo@acme.com",
+                    "password": "correct-horse-battery-staple",
+                }
+            }
+        )
+    )
+
+    app.state.settings.public_demo_enabled = True
+    app.state.settings.public_demo_email = None
+    app.state.settings.public_demo_password = None
+    app.state.settings.public_demo_manifest_path = str(manifest_path)
+
+    response = await client.post("/auth/demo-session", json={})
+    assert response.status_code == 200
+    body = response.json()
+    assert body["access_token"]
+
+    me = await client.get("/auth/me", headers={"Authorization": f"Bearer {body['access_token']}"})
+    assert me.status_code == 200
+    assert me.json()["email"] == account["email"]

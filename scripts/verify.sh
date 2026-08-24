@@ -30,6 +30,9 @@ backend/.venv/bin/ruff format --check backend/
 step "backend: migrations match models"
 (cd backend && .venv/bin/alembic check)
 
+step "backend: demo bootstrap markers"
+(cd backend && .venv/bin/python scripts/check_demo_bootstrap_markers.py)
+
 # Split across cores: the suite waits on Postgres and Docker far more than it
 # computes, so wall time falls with workers. Each worker gets its own database
 # (see tests/conftest.py) — they would otherwise truncate tables under each

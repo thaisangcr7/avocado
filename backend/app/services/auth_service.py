@@ -8,8 +8,10 @@ failed one.
 
 from __future__ import annotations
 
+import json
 import re
 import uuid
+from pathlib import Path
 
 from app.core.config import Settings
 from app.core.errors import AuthenticationError, ConflictError, NotFoundError
@@ -132,6 +134,13 @@ class AuthService:
         log.info("user_logged_in", user_id=str(user.id))
         return self._issue_tokens(user)
 
+    async def demo_session(self) -> TokenResponse:
+        if not self._settings.public_demo_enabled:
+            raise NotFoundError("Not found.")
+
+        email, password = self._resolve_demo_credentials()
+        return await self.login(LoginRequest(email=email, password=password))
+
     async def refresh(self, refresh_token: str) -> TokenResponse:
         payload = decode_token(
             settings=self._settings, token=refresh_token, expected_type="refresh"
@@ -173,6 +182,41 @@ class AuthService:
             ),
             expires_in=self._settings.access_token_ttl_minutes * 60,
         )
+
+    def _resolve_demo_credentials(self) -> tuple[str, str]:
+        configured_email = (self._settings.public_demo_email or "").strip()
+        configured_password = (self._settings.public_demo_password or "").strip()
+        if configured_email and configured_password:
+            return configured_email, configured_password
+
+        # In production the manifest fallback is refused: a public demo should
+        # use explicit restricted credentials, never whatever account was
+        # created first by a seed script.
+        if self._settings.is_production:
+            raise AuthenticationError(
+                "Public demo access is not configured. Set PUBLIC_DEMO_EMAIL "
+                "and PUBLIC_DEMO_PASSWORD."
+            )
+
+        manifest_path = Path(self._settings.public_demo_manifest_path)
+        if not manifest_path.exists():
+            raise AuthenticationError(
+                "Public demo access is not configured. Seed demo data or set "
+                "PUBLIC_DEMO_EMAIL/PUBLIC_DEMO_PASSWORD."
+            )
+
+        try:
+            payload = json.loads(manifest_path.read_text())
+            owner = payload.get("owner") or {}
+            email = str(owner.get("email") or "").strip()
+            password = str(owner.get("password") or "").strip()
+        except Exception as exc:
+            raise AuthenticationError("Public demo manifest could not be read.") from exc
+
+        if not email or not password:
+            raise AuthenticationError("Public demo manifest does not contain usable credentials.")
+
+        return email, password
 
 
 # A real argon2 hash of a value nobody can log in with — used only to keep

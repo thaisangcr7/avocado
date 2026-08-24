@@ -57,6 +57,27 @@ export function AuthPage() {
     }
   }
 
+  async function handleTryDemo() {
+    setError(null)
+    setFieldErrors({})
+    setSubmitting(true)
+
+    try {
+      const tokens = await authApi.demoSession()
+      tokenStore.set(tokens.access_token, tokens.refresh_token)
+      const user = await authApi.me()
+      queryClient.setQueryData(queryKeys.me, user)
+      setUser(user)
+    } catch (caught) {
+      if (caught instanceof ApiError) {
+        setError(caught.message)
+      } else {
+        setError('Could not start demo mode right now.')
+      }
+      setSubmitting(false)
+    }
+  }
+
   return (
     <div className="bg-atmosphere-auth relative flex min-h-screen items-center justify-center overflow-hidden px-4 py-12">
       <div
@@ -140,6 +161,18 @@ export function AuthPage() {
             <Button type="submit" loading={submitting} className="w-full">
               {isRegister ? 'Create account' : 'Sign in'}
             </Button>
+
+            {!isRegister && (
+              <Button
+                type="button"
+                variant="secondary"
+                className="w-full"
+                onClick={handleTryDemo}
+                disabled={submitting}
+              >
+                Try demo instantly
+              </Button>
+            )}
           </form>
         </Card>
 

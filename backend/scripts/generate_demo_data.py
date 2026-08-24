@@ -30,6 +30,9 @@ from urllib import error as urlerror
 from urllib import request as urlrequest
 from urllib.parse import urlsplit
 
+from sqlalchemy import text
+from sqlalchemy.ext.asyncio import create_async_engine
+
 DEFAULT_BASE_URL = os.environ.get("AVOCADO_API_BASE_URL", "http://127.0.0.1:8000")
 DEFAULT_OUTPUT_DIR = Path(__file__).resolve().parents[1] / ".demo-data" / "latest"
 
@@ -955,6 +958,22 @@ def reset_local_database() -> None:
         raise RuntimeError(truncate.stderr.strip() or "Reset failed.")
 
 
+async def workspace_count(database_url: str) -> int:
+    """Count workspaces directly from the database.
+
+    The demo seed normally creates a fresh org and workspaces every run. For
+    auto-bootstrap we need a safe idempotence guard, and workspace count is the
+    clearest signal that a deployment has already been initialized.
+    """
+    engine = create_async_engine(database_url)
+    try:
+        async with engine.connect() as conn:
+            result = await conn.execute(text("SELECT count(*) FROM workspaces"))
+            return int(result.scalar_one())
+    finally:
+        await engine.dispose()
+
+
 async def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--base-url", default=DEFAULT_BASE_URL, help="Avocado API base URL")
@@ -971,10 +990,28 @@ async def main() -> None:
         action="store_true",
         help="Clear the local demo database before seeding.",
     )
+    parser.add_argument(
+        "--skip-if-workspaces-exist",
+        action="store_true",
+        help="Exit successfully when the database already has one or more workspaces.",
+    )
     args = parser.parse_args()
 
     base_url = normalize_base_url(args.base_url)
     output_dir = Path(args.output_dir)
+
+    if args.skip_if_workspaces_exist:
+        database_url = os.environ.get("DATABASE_URL")
+        if not database_url:
+            raise RuntimeError(
+                "--skip-if-workspaces-exist requires DATABASE_URL so it can "
+                "check whether seeding already happened."
+            )
+        existing = await workspace_count(database_url)
+        if existing > 0:
+            print(f"Skipping demo seed: database already has {existing} workspace(s).")
+            return
+
     if output_dir.exists():
         shutil.rmtree(output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)

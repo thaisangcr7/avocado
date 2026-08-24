@@ -239,6 +239,7 @@ hand**, so leave it off if you have local work you want to keep:
 ```bash
 python3 backend/scripts/generate_demo_data.py          # add to what is there
 python3 backend/scripts/generate_demo_data.py --reset  # wipe first
+python3 backend/scripts/generate_demo_data.py --skip-if-workspaces-exist
 ```
 
 **Where it lands.** The generated files and a manifest are written to
@@ -297,6 +298,50 @@ Useful flags:
 - `--password-env`: use a different environment variable for password (default `AVOCADO_PASSWORD`).
 
 The script stores sync state in `<folder>/.avocado-sync-state.json` by default.
+
+### Optional auto-seed on deployment start
+
+For demo environments, the API can seed Northwind data automatically once it
+is live. This is opt-in and restart-safe.
+
+- Set `AUTO_SEED_DEMO=true`.
+- Startup then runs `scripts/auto_seed_demo.py`, which waits for `/api/v1/live`
+  and invokes `generate_demo_data.py --skip-if-workspaces-exist`.
+- If one or more workspaces already exist, seeding exits immediately.
+
+Relevant env vars:
+
+- `AUTO_SEED_DEMO` (default `false`)
+- `DEMO_SEED_BASE_URL` (default `http://127.0.0.1:8000`)
+- `DEMO_SEED_WAIT_SECONDS` (default `180`)
+- `DEMO_SEED_POLL_SECONDS` (default `1.5`)
+- `DEMO_SEED_ROWS_PER_CSV` (default `800`)
+- `DEMO_SEED_OUTPUT_DIR` (optional override for manifest/files output)
+
+Status markers in logs (grep `DEMO_SEED_STATUS=`):
+
+- `launcher_started` (API startup script started the background bootstrap)
+- `waiting_for_api`
+- `running`
+- `seeded`
+- `skipped_existing_data`
+- `disabled`
+- `api_not_ready`
+- `failed`
+
+### Optional public demo entry (no manual credentials)
+
+When `PUBLIC_DEMO_ENABLED=true`, the auth page shows **Try demo instantly** and
+calls `POST /auth/demo-session` anonymously. The API then issues normal auth
+tokens for a configured demo account.
+
+- Development: if `PUBLIC_DEMO_EMAIL`/`PUBLIC_DEMO_PASSWORD` are unset, the API
+  can fall back to `PUBLIC_DEMO_MANIFEST_PATH`.
+- Production/staging: set explicit `PUBLIC_DEMO_EMAIL` and
+  `PUBLIC_DEMO_PASSWORD`. Manifest fallback is refused there.
+
+This gives first-time visitors immediate entry while keeping the rest of the
+app behind normal JWT auth.
 
 ### What a free deploy can and cannot include
 

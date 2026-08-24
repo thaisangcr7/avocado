@@ -61,6 +61,9 @@ export const authApi = {
   login: (payload: { email: string; password: string }) =>
     http.post<TokenResponse>('/auth/login', payload, { anonymous: true }),
 
+  demoSession: () =>
+    http.post<TokenResponse>('/auth/demo-session', {}, { anonymous: true }),
+
   me: () => http.get<CurrentUser>('/auth/me'),
 }
 

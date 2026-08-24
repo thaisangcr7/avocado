@@ -32,6 +32,11 @@ async def login(payload: LoginRequest, service: AuthServiceDep) -> TokenResponse
     return await service.login(payload)
 
 
+@router.post("/demo-session", response_model=TokenResponse)
+async def demo_session(service: AuthServiceDep) -> TokenResponse:
+    return await service.demo_session()
+
+
 @router.post("/refresh", response_model=TokenResponse)
 async def refresh(payload: RefreshRequest, service: AuthServiceDep) -> TokenResponse:
     return await service.refresh(payload.refresh_token)

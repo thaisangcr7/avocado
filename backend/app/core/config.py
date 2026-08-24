@@ -209,6 +209,15 @@ class Settings(BaseSettings):
     # it has to be the address a recipient can actually open — not the API's.
     public_web_url: str = "http://localhost:5173"
 
+    # --- Public demo access --------------------------------------------
+    # Optional anonymous entry point for a hosted demo. Disabled by default.
+    # In production this should point at a restricted demo account via
+    # PUBLIC_DEMO_EMAIL/PUBLIC_DEMO_PASSWORD, not an admin user.
+    public_demo_enabled: bool = False
+    public_demo_email: str | None = None
+    public_demo_password: str | None = None
+    public_demo_manifest_path: str = "./.demo-data/latest/manifest.json"
+
     # --- CORS ----------------------------------------------------------
     cors_origins: str = "http://localhost:5173,http://localhost:3000"
 

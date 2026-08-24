@@ -46,6 +46,10 @@ services:
       SANDBOX_BACKEND: http
       SANDBOX_URL: http://sandbox:8080
       SANDBOX_AUTH_TOKEN: ${SANDBOX_AUTH_TOKEN:?set SANDBOX_AUTH_TOKEN in .env}
+      UVICORN_RELOAD: "true"
+      # Off by default; set true to bootstrap demo data automatically once the
+      # API is live. Safe on restarts: seeding is skipped when workspaces exist.
+      AUTO_SEED_DEMO: ${AUTO_SEED_DEMO:-false}
     ports:
       - "8000:8000"
     depends_on:
@@ -58,8 +62,7 @@ services:
     volumes:
       - ./backend:/app
     command: >
-      sh -c "alembic upgrade head &&
-             uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload"
+      sh -c "alembic upgrade head && sh scripts/start_api.sh"
 
   sandbox:
     # The only container that holds the Docker socket. It runs analysis code and

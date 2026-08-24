@@ -84,6 +84,10 @@ jobs:
         working-directory: backend
         run: alembic check
 
+      - name: Demo bootstrap marker contract
+        working-directory: backend
+        run: python scripts/check_demo_bootstrap_markers.py
+
       - name: Tests
         working-directory: backend
         # -n auto splits the suite across the runner's cores. It waits on
