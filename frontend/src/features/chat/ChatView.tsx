@@ -13,7 +13,7 @@ import Markdown from 'react-markdown'
 
 import { ApiError } from '@/api/client'
 import { streamMessage, type StreamSource } from '@/api/stream'
-import type { AnalysisRun, Citation, Message, Preset } from '@/api/types'
+import type { AnalysisRun, Citation, Document, Message, Preset } from '@/api/types'
 import { Button, EmptyState, ErrorNotice, Spinner } from '@/components/ui/primitives'
 import { ReportArtifact } from '@/features/analysis/ReportArtifact'
 import {
@@ -59,6 +59,7 @@ export function ChatView({
   onPendingQuestionSent?: () => void
 }) {
   const { data: messages, isLoading } = useMessages(workspaceId, conversationId)
+  const { data: documents } = useDocuments(workspaceId)
   const { data: voice } = useVoiceCapabilities()
   const { data: models } = useModels()
   const { data: conversations } = useConversations(workspaceId)
@@ -196,6 +197,21 @@ export function ChatView({
   // A question chosen on the landing pane is sent once the conversation it
   // belongs to exists. Guarded by a ref so a re-render cannot send it twice.
   const sentPendingRef = useRef<string | null>(null)
+  const startedPendingRef = useRef<string | null>(null)
+
+  // A guided flow may arrive with only a pending question and no conversation
+  // yet. Start one once, then let the send effect below deliver the question.
+  useEffect(() => {
+    if (!pendingQuestion || conversationId || isStreaming || !onStartConversation) return
+    if (startedPendingRef.current === pendingQuestion) return
+    startedPendingRef.current = pendingQuestion
+    onStartConversation(pendingQuestion)
+  }, [pendingQuestion, conversationId, isStreaming, onStartConversation])
+
+  useEffect(() => {
+    if (!pendingQuestion) startedPendingRef.current = null
+  }, [pendingQuestion])
+
   useEffect(() => {
     if (!pendingQuestion || !conversationId || isStreaming) return
     if (sentPendingRef.current === conversationId) return
@@ -265,10 +281,9 @@ export function ChatView({
             <Spinner className="size-5 text-ink-muted" />
           </div>
         ) : (messages?.length ?? 0) === 0 && !isStreaming ? (
-          <EmptyState
-            icon={<span className="text-2xl">🥑</span>}
-            title="Ask anything about this Space"
-            description="Answers are grounded in your uploaded documents, with citations you can check."
+          <EmptyConversationState
+            documents={documents?.items ?? []}
+            onAsk={(question) => void handleSend(question)}
           />
         ) : (
           <div className="mx-auto max-w-3xl space-y-4">
@@ -561,6 +576,149 @@ function StartHere({
     )
   }
 
+  const limited = buildOpenings(ready).slice(0, 6)
+
+  return (
+    <div className="flex h-full justify-center overflow-y-auto px-4 py-10 sm:px-6">
+      <div className="animate-in-slow my-auto w-full max-w-lg space-y-7">
+        <div className="space-y-3 text-center">
+          <div
+            className="mx-auto flex size-14 items-center justify-center rounded-2xl bg-accent-soft text-2xl shadow-[0_6px_20px_rgba(40,90,50,0.1)]"
+            aria-hidden="true"
+          >
+            🥑
+          </div>
+          <h2 className="font-display text-2xl font-semibold tracking-tight text-ink text-balance">
+            What do you want to know?
+          </h2>
+          <p className="text-sm leading-relaxed text-ink-muted text-balance">
+            {ready.length} document{ready.length === 1 ? '' : 's'} ready
+            {spreadsheets.length > 0
+              ? ` · ${spreadsheets.length} spreadsheet${spreadsheets.length === 1 ? '' : 's'} for analysis`
+              : ''}
+            . Suggestions match what you uploaded.
+          </p>
+        </div>
+
+        <div className="animate-stagger space-y-2.5">
+          {limited.map((opening) => (
+            <button
+              key={opening.question}
+              type="button"
+              onClick={() => onStart?.(opening.question)}
+              className="group flex w-full items-start gap-3 rounded-2xl border border-border-subtle/80 bg-surface-raised/90 px-4 py-3.5 text-left shadow-[0_1px_2px_rgba(30,50,30,0.04)] transition-all hover:-translate-y-0.5 hover:border-accent/35 hover:shadow-[0_8px_20px_rgba(40,90,50,0.08)]"
+            >
+              <span className="mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-xl bg-accent-soft text-xs font-semibold text-accent-strong transition-colors group-hover:bg-accent group-hover:text-white">
+                →
+              </span>
+              <span className="min-w-0 flex-1">
+                <span className="block text-[11px] font-semibold uppercase tracking-wide text-accent-strong">
+                  {opening.label}
+                  <span className="ml-2 font-medium normal-case tracking-normal text-ink-muted/70">
+                    {opening.hint}
+                  </span>
+                </span>
+                <span className="mt-0.5 block text-sm leading-snug text-ink">
+                  {opening.question}
+                </span>
+              </span>
+            </button>
+          ))}
+        </div>
+
+        <div className="text-center">
+          <Button variant="secondary" size="sm" onClick={() => onStart?.()}>
+            Or start a blank conversation
+          </Button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function EmptyConversationState({
+  documents,
+  onAsk,
+}: {
+  documents: Document[]
+  onAsk: (question: string) => void
+}) {
+  const ready = documents.filter((doc) => doc.status === 'ready')
+  const processing = documents.filter(
+    (doc) => doc.status === 'pending' || doc.status === 'processing',
+  )
+
+  if (!ready.length) {
+    if (processing.length > 0) {
+      return (
+        <EmptyState
+          icon={<span className="text-2xl">⏳</span>}
+          title="Files are still getting ready"
+          description={`Grounded answers start once processing finishes. ${processing.length} file${processing.length === 1 ? '' : 's'} ${processing.length === 1 ? 'is' : 'are'} still being prepared for retrieval or analysis.`}
+        />
+      )
+    }
+
+    return (
+      <EmptyState
+        icon={<span className="text-2xl">🥑</span>}
+        title="Ask anything about this Space"
+        description="Answers are grounded in your uploaded documents, with citations you can check. Upload a file or switch to a demo workspace to get started."
+      />
+    )
+  }
+
+  const openings = buildOpenings(ready).slice(0, 4)
+  const spreadsheetCount = ready.filter(
+    (doc) => doc.doc_type === 'xlsx' || doc.doc_type === 'csv',
+  ).length
+
+  return (
+    <div className="mx-auto max-w-3xl space-y-4">
+      <div className="rounded-2xl border border-border-subtle/80 bg-surface-raised/90 px-5 py-4 shadow-[0_1px_2px_rgba(30,50,30,0.04)]">
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="inline-flex items-center rounded-full bg-accent-soft px-2.5 py-1 text-xs font-semibold text-accent-strong">
+            Ready to ask
+          </span>
+          <p className="text-sm text-ink-muted">
+            {ready.length} document{ready.length === 1 ? '' : 's'} ready
+            {spreadsheetCount > 0
+              ? `, including ${spreadsheetCount} spreadsheet${spreadsheetCount === 1 ? '' : 's'} for analysis.`
+              : '.'}
+          </p>
+        </div>
+      </div>
+
+      <div className="space-y-2.5">
+        {openings.map((opening) => (
+          <button
+            key={opening.question}
+            type="button"
+            onClick={() => onAsk(opening.question)}
+            className="group flex w-full items-start gap-3 rounded-2xl border border-border-subtle/80 bg-surface-raised/90 px-4 py-3.5 text-left shadow-[0_1px_2px_rgba(30,50,30,0.04)] transition-all hover:-translate-y-0.5 hover:border-accent/35 hover:shadow-[0_8px_20px_rgba(40,90,50,0.08)]"
+          >
+            <span className="mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-xl bg-accent-soft text-xs font-semibold text-accent-strong transition-colors group-hover:bg-accent group-hover:text-white">
+              →
+            </span>
+            <span className="min-w-0 flex-1">
+              <span className="block text-[11px] font-semibold uppercase tracking-wide text-accent-strong">
+                {opening.label}
+                <span className="ml-2 font-medium normal-case tracking-normal text-ink-muted/70">
+                  {opening.hint}
+                </span>
+              </span>
+              <span className="mt-0.5 block text-sm leading-snug text-ink">
+                {opening.question}
+              </span>
+            </span>
+          </button>
+        ))}
+      </div>
+    </div>
+  )
+}
+
+function buildOpenings(ready: Document[]) {
   const spreadsheets = ready.filter(
     (doc) => doc.doc_type === 'xlsx' || doc.doc_type === 'csv',
   )
@@ -572,10 +730,6 @@ function StartHere({
   )
   const primaryText = policyLike ?? textDocs[0]
   const primarySheet = spreadsheets[0]
-
-  // Openings are built from filenames and types actually present, so a finance
-  // CSV workspace does not get "what policies…" and a policy pack does not get
-  // "month-over-month trend".
   const openings: { label: string; question: string; hint: string }[] = []
 
   if (primaryText) {
@@ -649,64 +803,7 @@ function StartHere({
     })
   }
 
-  const limited = openings.slice(0, 6)
-
-  return (
-    <div className="flex h-full justify-center overflow-y-auto px-4 py-10 sm:px-6">
-      <div className="animate-in-slow my-auto w-full max-w-lg space-y-7">
-        <div className="space-y-3 text-center">
-          <div
-            className="mx-auto flex size-14 items-center justify-center rounded-2xl bg-accent-soft text-2xl shadow-[0_6px_20px_rgba(40,90,50,0.1)]"
-            aria-hidden="true"
-          >
-            🥑
-          </div>
-          <h2 className="font-display text-2xl font-semibold tracking-tight text-ink text-balance">
-            What do you want to know?
-          </h2>
-          <p className="text-sm leading-relaxed text-ink-muted text-balance">
-            {ready.length} document{ready.length === 1 ? '' : 's'} ready
-            {spreadsheets.length > 0
-              ? ` · ${spreadsheets.length} spreadsheet${spreadsheets.length === 1 ? '' : 's'} for analysis`
-              : ''}
-            . Suggestions match what you uploaded.
-          </p>
-        </div>
-
-        <div className="animate-stagger space-y-2.5">
-          {limited.map((opening) => (
-            <button
-              key={opening.question}
-              type="button"
-              onClick={() => onStart?.(opening.question)}
-              className="group flex w-full items-start gap-3 rounded-2xl border border-border-subtle/80 bg-surface-raised/90 px-4 py-3.5 text-left shadow-[0_1px_2px_rgba(30,50,30,0.04)] transition-all hover:-translate-y-0.5 hover:border-accent/35 hover:shadow-[0_8px_20px_rgba(40,90,50,0.08)]"
-            >
-              <span className="mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-xl bg-accent-soft text-xs font-semibold text-accent-strong transition-colors group-hover:bg-accent group-hover:text-white">
-                →
-              </span>
-              <span className="min-w-0 flex-1">
-                <span className="block text-[11px] font-semibold uppercase tracking-wide text-accent-strong">
-                  {opening.label}
-                  <span className="ml-2 font-medium normal-case tracking-normal text-ink-muted/70">
-                    {opening.hint}
-                  </span>
-                </span>
-                <span className="mt-0.5 block text-sm leading-snug text-ink">
-                  {opening.question}
-                </span>
-              </span>
-            </button>
-          ))}
-        </div>
-
-        <div className="text-center">
-          <Button variant="secondary" size="sm" onClick={() => onStart?.()}>
-            Or start a blank conversation
-          </Button>
-        </div>
-      </div>
-    </div>
-  )
+  return openings
 }
 
 /**

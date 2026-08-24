@@ -3,9 +3,9 @@
  * chat in the center, and a right rail for Documents + Artifacts.
  */
 
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 
-import type { AnalysisRun, Document } from '@/api/types'
+import type { AnalysisRun, Document, Workspace } from '@/api/types'
 import { AnalysisView } from '@/features/analysis/AnalysisView'
 import { ChatView } from '@/features/chat/ChatView'
 import { HistoryPage } from '@/features/history/HistoryPage'
@@ -57,6 +57,7 @@ export function WorkspaceShell() {
   const [historyOpen, setHistoryOpen] = useState(false)
   const [presetsOpen, setPresetsOpen] = useState(false)
   const [schedulesOpen, setSchedulesOpen] = useState(false)
+  const [demoPickerOpen, setDemoPickerOpen] = useState(false)
 
   const [railWidth, setRailWidth] = useResizableWidth('avocado.rail_width', 420)
   const [rightView, setRightView] = useState<RightPanelView>('documents')
@@ -64,6 +65,22 @@ export function WorkspaceShell() {
   // will be asked in has been created.
   const [pendingQuestion, setPendingQuestion] = useState<string | null>(null)
   const startConversation = useCreateConversation(activeWorkspaceId ?? '')
+  const demoWorkspaces = useMemo(
+    () => (workspaces ?? []).filter((workspace) => /northwind|demo/i.test(workspace.name)),
+    [workspaces],
+  )
+
+  const openDemoWorkspace = useCallback(
+    (workspaceId: string, guidedQuestion?: string) => {
+      setActiveWorkspace(workspaceId)
+      setActiveConversationId(null)
+      setPendingQuestion(guidedQuestion ?? null)
+      setHistoryOpen(false)
+      setRightOpen(false)
+      setThreadsOpen(false)
+    },
+    [setActiveWorkspace],
+  )
   // Defined once so the rail button and the keyboard shortcut cannot drift.
   const newChat = useCallback(() => {
     startConversation.mutate(undefined, {
@@ -120,6 +137,17 @@ export function WorkspaceShell() {
 
       {schedulesOpen && workspace && (
         <SchedulesModal workspaceId={workspace.id} onClose={() => setSchedulesOpen(false)} />
+      )}
+
+      {demoPickerOpen && (
+        <DemoWorkspaceModal
+          workspaces={demoWorkspaces}
+          onClose={() => setDemoPickerOpen(false)}
+          onOpen={(workspaceId, guidedQuestion) => {
+            openDemoWorkspace(workspaceId, guidedQuestion)
+            setDemoPickerOpen(false)
+          }}
+        />
       )}
 
       <div className="relative flex min-h-0 flex-1 overflow-hidden">
@@ -217,15 +245,7 @@ export function WorkspaceShell() {
             <ChatView
               workspaceId={workspace.id}
               conversationId={activeConversationId}
-              onUseDemoWorkspace={() => {
-                const demo =
-                  workspaces?.find((candidate) => /northwind hq/i.test(candidate.name)) ??
-                  workspaces?.find((candidate) => /demo/i.test(candidate.name))
-                if (!demo) return
-                setActiveWorkspace(demo.id)
-                setActiveConversationId(null)
-                setPendingQuestion(null)
-              }}
+              onUseDemoWorkspace={() => setDemoPickerOpen(true)}
               onOpenTask={(taskId) => {
                 setResumeTaskId(taskId)
                 openRight('task')
@@ -306,6 +326,116 @@ export function WorkspaceShell() {
       </div>
     </div>
   )
+}
+
+function DemoWorkspaceModal({
+  workspaces,
+  onClose,
+  onOpen,
+}: {
+  workspaces: Workspace[]
+  onClose: () => void
+  onOpen: (workspaceId: string, guidedQuestion?: string) => void
+}) {
+  const ordered = [...workspaces].sort((a, b) => demoWorkspaceRank(a.name) - demoWorkspaceRank(b.name))
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
+      role="dialog"
+      aria-modal="true"
+      aria-label="Choose a demo workspace"
+      onClick={onClose}
+    >
+      <div
+        className="flex max-h-[85vh] w-full max-w-3xl flex-col overflow-hidden rounded-2xl border border-border-subtle bg-surface-raised shadow-xl"
+        onClick={(event) => event.stopPropagation()}
+      >
+        <header className="flex items-center justify-between border-b border-border-subtle px-5 py-4">
+          <div>
+            <h2 className="text-sm font-semibold text-ink">Start with demo data</h2>
+            <p className="mt-0.5 text-xs text-ink-muted">
+              Pick a pre-seeded workspace, then jump straight into a guided question.
+            </p>
+          </div>
+          <Button variant="ghost" size="sm" onClick={onClose} aria-label="Close">
+            ✕
+          </Button>
+        </header>
+
+        <div className="min-h-0 flex-1 overflow-y-auto p-4">
+          {ordered.length === 0 ? (
+            <p className="rounded-xl border border-border-subtle bg-surface px-4 py-6 text-sm text-ink-muted">
+              No demo workspace is available in this organization yet.
+            </p>
+          ) : (
+            <div className="grid gap-2 sm:grid-cols-2">
+              {ordered.map((workspace) => (
+                <div
+                  key={workspace.id}
+                  className="rounded-xl border border-border-subtle bg-surface p-3"
+                >
+                  <div className="flex items-center justify-between gap-2">
+                    <p className="truncate text-sm font-semibold text-ink">{workspace.name}</p>
+                    {isRecommendedDemo(workspace.name) && (
+                      <span className="rounded-full bg-accent-soft px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-accent-strong">
+                        Recommended
+                      </span>
+                    )}
+                  </div>
+                  <p className="mt-1 text-xs leading-relaxed text-ink-muted">
+                    {describeDemoWorkspace(workspace.name)}
+                  </p>
+
+                  <div className="mt-3 flex flex-wrap gap-1.5">
+                    <Button
+                      size="sm"
+                      onClick={() => onOpen(workspace.id, 'What policies does this Space define?')}
+                    >
+                      Guided start
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="secondary"
+                      onClick={() => onOpen(workspace.id)}
+                    >
+                      Open only
+                    </Button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function demoWorkspaceRank(name: string) {
+  if (/northwind hq/i.test(name)) return 0
+  if (/northwind finance/i.test(name)) return 1
+  if (/northwind sandbox/i.test(name)) return 2
+  if (/northwind/i.test(name)) return 3
+  if (/demo/i.test(name)) return 4
+  return 5
+}
+
+function isRecommendedDemo(name: string) {
+  return /northwind hq/i.test(name)
+}
+
+function describeDemoWorkspace(name: string) {
+  if (/northwind hq/i.test(name)) {
+    return 'Best first stop: policies, notes, and analysis-ready spreadsheets.'
+  }
+  if (/northwind finance/i.test(name)) {
+    return 'Finance-heavy data for KPI questions, trends, and executive briefs.'
+  }
+  if (/northwind sandbox/i.test(name)) {
+    return 'Intentionally sparse workspace to test no-data behavior and guardrails.'
+  }
+  return 'Pre-seeded sample data for quick guided exploration.'
 }
 
 function LibraryRail({

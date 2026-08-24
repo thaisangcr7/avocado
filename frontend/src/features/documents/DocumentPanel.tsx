@@ -117,6 +117,11 @@ export function DocumentPanel({
   const fileInput = useRef<HTMLInputElement>(null)
 
   const documents = data?.items ?? []
+  const readyCount = documents.filter((doc) => doc.status === 'ready').length
+  const processingCount = documents.filter(
+    (doc) => doc.status === 'pending' || doc.status === 'processing',
+  ).length
+  const failedCount = documents.filter((doc) => doc.status === 'failed').length
 
   const handleFiles = useCallback(
     async (files: FileList | null) => {
@@ -230,6 +235,15 @@ export function DocumentPanel({
             <RecordingUploader workspaceId={workspaceId} />
           </div>
         )}
+
+        {documents.length > 0 && (
+          <IngestionProgressSummary
+            total={documents.length}
+            ready={readyCount}
+            processing={processingCount}
+            failed={failedCount}
+          />
+        )}
       </div>
 
       <div className="min-h-0 flex-1 overflow-y-auto px-3 pb-3">
@@ -261,6 +275,63 @@ export function DocumentPanel({
         )}
       </div>
     </div>
+  )
+}
+
+function IngestionProgressSummary({
+  total,
+  ready,
+  processing,
+  failed,
+}: {
+  total: number
+  ready: number
+  processing: number
+  failed: number
+}) {
+  const progress = total > 0 ? Math.round((ready / total) * 100) : 0
+
+  return (
+    <section className="mt-3 rounded-xl border border-border-subtle/80 bg-surface px-3 py-2.5">
+      <div className="flex items-center justify-between gap-2">
+        <p className="text-xs font-semibold uppercase tracking-[0.08em] text-ink-muted">
+          Ingest progress
+        </p>
+        <p className="text-xs font-medium text-ink-muted">{ready}/{total} ready</p>
+      </div>
+
+      <div className="mt-2 h-1.5 w-full overflow-hidden rounded-full bg-surface-sunken">
+        <div
+          className="h-full rounded-full bg-accent transition-all"
+          style={{ width: `${progress}%` }}
+          aria-hidden="true"
+        />
+      </div>
+
+      <div className="mt-2 flex flex-wrap items-center gap-1.5 text-[11px]">
+        <span className="rounded-full bg-accent-soft px-2 py-0.5 font-medium text-accent-strong">
+          Ready: {ready}
+        </span>
+        {processing > 0 && (
+          <span className="rounded-full bg-warning-soft px-2 py-0.5 font-medium text-warning">
+            Processing: {processing}
+          </span>
+        )}
+        {failed > 0 && (
+          <span className="rounded-full bg-danger-soft px-2 py-0.5 font-medium text-danger">
+            Failed: {failed}
+          </span>
+        )}
+      </div>
+
+      <p className="mt-2 text-xs text-ink-muted">
+        {processing > 0
+          ? 'Files are still indexing. As soon as they turn ready, answers can cite them.'
+          : ready > 0
+            ? 'Ready to ask in chat now. Suggestions in the center pane adapt to these files.'
+            : 'No file is ready yet. Upload a document or spreadsheet to begin.'}
+      </p>
+    </section>
   )
 }
 

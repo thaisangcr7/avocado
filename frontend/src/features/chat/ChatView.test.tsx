@@ -12,7 +12,7 @@ import userEvent from '@testing-library/user-event'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 
 import { ChatView } from './ChatView'
-import type { Message } from '@/api/types'
+import type { Document, Message, Paginated } from '@/api/types'
 import { queryKeys } from '@/hooks/queries'
 
 const CITED_MESSAGE: Message = {
@@ -54,7 +54,73 @@ const USER_MESSAGE: Message = {
   created_at: '2026-01-01T11:59:00Z',
 }
 
-function renderChat(messages: Message[], conversationId: string | null = 'c1') {
+const READY_DOCUMENTS: Paginated<Document> = {
+  items: [
+    {
+      id: 'd1',
+      workspace_id: 'w1',
+      conversation_id: null,
+      filename: 'employee-handbook.pdf',
+      content_type: 'application/pdf',
+      doc_type: 'pdf',
+      size_bytes: 1024,
+      status: 'ready',
+      error_message: null,
+      page_count: 12,
+      chunk_count: 8,
+      doc_metadata: {},
+      created_at: '2026-01-01T11:00:00Z',
+      updated_at: '2026-01-01T11:01:00Z',
+    },
+    {
+      id: 'd2',
+      workspace_id: 'w1',
+      conversation_id: null,
+      filename: 'revenue_by_region.csv',
+      content_type: 'text/csv',
+      doc_type: 'csv',
+      size_bytes: 2048,
+      status: 'ready',
+      error_message: null,
+      page_count: null,
+      chunk_count: 4,
+      doc_metadata: {},
+      created_at: '2026-01-01T11:00:00Z',
+      updated_at: '2026-01-01T11:01:00Z',
+    },
+  ],
+  next_cursor: null,
+  has_more: false,
+}
+
+const PROCESSING_DOCUMENTS: Paginated<Document> = {
+  items: [
+    {
+      id: 'd3',
+      workspace_id: 'w1',
+      conversation_id: null,
+      filename: 'large-policy-pack.pdf',
+      content_type: 'application/pdf',
+      doc_type: 'pdf',
+      size_bytes: 4096,
+      status: 'processing',
+      error_message: null,
+      page_count: null,
+      chunk_count: 0,
+      doc_metadata: {},
+      created_at: '2026-01-01T11:00:00Z',
+      updated_at: '2026-01-01T11:01:00Z',
+    },
+  ],
+  next_cursor: null,
+  has_more: false,
+}
+
+function renderChat(
+  messages: Message[],
+  conversationId: string | null = 'c1',
+  documents?: Paginated<Document>,
+) {
   const queryClient = new QueryClient({
     // staleTime keeps the seeded cache from being refetched, so `fetch` calls
     // in these tests are the ones the component itself made.
@@ -62,6 +128,9 @@ function renderChat(messages: Message[], conversationId: string | null = 'c1') {
   })
   if (conversationId) {
     queryClient.setQueryData(queryKeys.messages(conversationId), messages)
+  }
+  if (documents) {
+    queryClient.setQueryData(queryKeys.documents('w1'), documents)
   }
 
   return render(
@@ -128,6 +197,19 @@ describe('ChatView', () => {
   it('invites a first question when the thread is empty', () => {
     renderChat([])
     expect(screen.getByText(/ask anything about this space/i)).toBeInTheDocument()
+  })
+
+  it('shows processing guidance when files are still ingesting', () => {
+    renderChat([], 'c1', PROCESSING_DOCUMENTS)
+    expect(screen.getByText(/files are still getting ready/i)).toBeInTheDocument()
+    expect(screen.getByText(/still being prepared/i)).toBeInTheDocument()
+  })
+
+  it('shows ready-to-ask openings when documents are available in an empty thread', () => {
+    renderChat([], 'c1', READY_DOCUMENTS)
+    expect(screen.getByText(/ready to ask/i)).toBeInTheDocument()
+    expect(screen.getByText(/what policies does this space define\?/i)).toBeInTheDocument()
+    expect(screen.getByText(/create an executive summary with the top kpis/i)).toBeInTheDocument()
   })
 
   it('keeps send disabled until something is typed', async () => {
