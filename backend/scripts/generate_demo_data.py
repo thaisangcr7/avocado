@@ -265,22 +265,87 @@ def build_time_off_policy(workspace_name: str) -> str:
     This one exists so a demo has at least one document where that distinction
     is visible: ask about it in different words than the ones written here and
     a lexical index misses while a semantic one does not.
+
+    Structure and figures are modelled on the GSA TTS Handbook, which is in the
+    public domain under CC0 1.0 (https://github.com/GSA-TTS/handbook). Written
+    as a fictional company's policy, so it reads like a document a team would
+    actually hold rather than a paragraph invented to be retrieved.
     """
-    return (
-        f"# Time Off Policy\n\n"
-        f"## Vacation\n\n"
-        f"Full-time staff at {workspace_name} accrue fifteen vacation days per "
-        f"calendar year, credited monthly. Unused balance carries over into the "
-        f"next year up to a cap of five days; anything beyond that is forfeited "
-        f"at year end.\n\n"
-        f"## Sick Leave\n\n"
-        f"Sick leave is separate from vacation and is not capped. Employees "
-        f"experiencing illness should notify their manager before their shift "
-        f"starts whenever possible.\n\n"
-        f"## Requesting Time Off\n\n"
-        f"Requests for time away should go through the scheduling tool at "
-        f"least one week ahead for anything longer than two consecutive days. "
-        f"Same-day requests are handled at the manager's discretion.\n"
+    return textwrap.dedent(
+        f"""\
+        # Time Off Policy
+
+        Applies to every full-time and part-time employee of {workspace_name}.
+        Effective from the first of January and reviewed once a year.
+
+        ## Vacation
+
+        Full-time staff at {workspace_name} accrue fifteen vacation days per
+        calendar year, credited monthly. Unused balance carries over into the
+        next year up to a cap of five days; anything beyond that is forfeited
+        at year end.
+
+        Accrual increases with service. Staff in their fourth year and beyond
+        accrue twenty days a year, and staff past ten years of service accrue
+        twenty-five. The change takes effect the month after the anniversary,
+        not retroactively to the start of the year.
+
+        Part-time staff accrue in proportion to scheduled hours. Someone
+        working three days a week accrues nine days a year on the base rate.
+
+        ## Sick Leave
+
+        Sick leave is separate from vacation and is not capped. Employees
+        experiencing illness should notify their manager before their shift
+        starts whenever possible.
+
+        A doctor's note is only requested after four consecutive working days
+        of absence, and is never required for a single day. Sick leave may be
+        used to care for an immediate family member on the same terms.
+
+        ## Bereavement
+
+        Up to five working days of paid bereavement leave for the death of an
+        immediate family member, and up to two days for extended family. Leave
+        for the death of a child is two weeks, and does not count against any
+        other balance.
+
+        ## Parental Leave
+
+        Sixteen weeks of paid parental leave for a birth or an adoption,
+        available to either parent, to be taken within twelve months of the
+        child arriving. It may be taken in up to three separate blocks rather
+        than all at once.
+
+        ## Unpaid Leave
+
+        Unpaid leave of any length needs the employee's manager to approve it.
+        Anything longer than two working weeks also needs approval from the
+        manager's own manager, because cover has to be arranged rather than
+        absorbed.
+
+        ## Requesting Time Off
+
+        Requests for time away should go through the scheduling tool at
+        least one week ahead for anything longer than two consecutive days.
+        Same-day requests are handled at the manager's discretion.
+
+        Two people from the same team are not scheduled off in the same week
+        without the manager agreeing cover first. Requests are answered within
+        three working days; an unanswered request is not an approved one.
+
+        ## Public Holidays
+
+        Eleven public holidays a year, listed in the scheduling tool. Someone
+        rostered to work a public holiday takes the day back within the same
+        quarter.
+
+        ## When Someone Leaves
+
+        Accrued and unused vacation is paid out at the final salary rate, up
+        to the same five-day cap that applies at year end. Sick leave is not
+        paid out.
+        """
     )
 
 
@@ -288,23 +353,79 @@ def build_expense_policy(workspace_name: str) -> str:
     """Real prose with concrete thresholds, for the same reason as the time
     off policy: something with genuine vocabulary variety and specific facts
     a paraphrased question, or a request for an exact figure, can be checked
-    against."""
-    return (
-        f"# Expense Approval Policy\n\n"
-        f"## Everyday Purchases\n\n"
-        f"Team members at {workspace_name} can expense purchases under $200 "
-        f"without prior approval; submit the receipt within ten business days "
-        f"and it is reimbursed on the next pay cycle.\n\n"
-        f"## Larger Purchases\n\n"
-        f"Anything from $200 to $2,000 needs sign-off from the requester's "
-        f"manager before the purchase is made, not after. Above $2,000, "
-        f"finance has to approve it as well, and the request should include a "
-        f"one-line justification for why it cannot wait for the next budget "
-        f"cycle.\n\n"
-        f"## What Is Not Covered\n\n"
-        f"Alcohol, personal subscriptions, and anything that could reasonably "
-        f"be mistaken for a gift to a client or vendor are never reimbursable, "
-        f"regardless of amount.\n"
+    against.
+
+    Figures follow the GSA TTS Handbook's travel and reimbursement guidance,
+    public domain under CC0 1.0 (https://github.com/GSA-TTS/handbook).
+    """
+    return textwrap.dedent(
+        f"""\
+        # Expense Approval Policy
+
+        How {workspace_name} approves, reimburses and refuses expenses. Read
+        the travel section before booking anything, not after.
+
+        ## Everyday Purchases
+
+        Team members at {workspace_name} can expense purchases under $200
+        without prior approval; submit the receipt within ten business days
+        and it is reimbursed on the next pay cycle.
+
+        ## Larger Purchases
+
+        Anything from $200 to $2,000 needs sign-off from the requester's
+        manager before the purchase is made, not after. Above $2,000, finance
+        has to approve it as well, and the request should include a one-line
+        justification for why it cannot wait for the next budget cycle.
+
+        ## Receipts
+
+        An itemised receipt is required for any single expense over $75.
+        Lodging, rental cars and fuel need a receipt at any amount. Meals
+        claimed against the daily allowance do not need receipts, because the
+        allowance is a flat rate rather than a reimbursement of what was spent.
+
+        A card statement is not a receipt. It shows an amount and a merchant,
+        and neither of those is what was bought.
+
+        ## Travel
+
+        Book travel through the company tool so the fare is on account. The
+        daily meal and incidental allowance is paid at seventy-five percent of
+        the normal rate on the first and last day of a trip, whatever time of
+        day the travel actually happened.
+
+        One checked bag per leg is reimbursed without explanation; a second
+        bag needs one. Laundry is reimbursable only on trips of at least four
+        consecutive nights. A rental car needs to be the most economical class
+        that fits the purpose, and fuel is reimbursed on receipt rather than
+        by mileage.
+
+        Do not exceed the approved trip budget by more than twenty percent.
+        Beyond that the trip needs a fresh authorisation before the money is
+        spent, not an explanation afterwards.
+
+        ## Filing and Reimbursement
+
+        File the expense claim within five business days of returning from a
+        trip. Claims are reviewed within three to five business days, and
+        approved claims are paid to the employee's account within a further
+        three to five.
+
+        Repeatedly late claims are grounds for refusing the next trip, since a
+        claim filed months later cannot be checked against anything.
+
+        ## What Is Not Covered
+
+        Alcohol, personal subscriptions, and anything that could reasonably
+        be mistaken for a gift to a client or vendor are never reimbursable,
+        regardless of amount.
+
+        Hotel wifi is not reimbursed where there is usable mobile signal and
+        no reason the work needed more. Airport parking is not reimbursed
+        unless driving was the cheapest way to make the trip overall. Fines,
+        including parking and speeding, are never reimbursed.
+        """
     )
 
 

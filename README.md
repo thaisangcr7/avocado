@@ -94,6 +94,15 @@ python3 backend/scripts/generate_demo_data.py --reset
 That prints the login it just created. Open **http://localhost:5173**, sign in,
 and pick the **Northwind HQ** workspace.
 
+Or skip the sign-in entirely: **http://localhost:5173/demo** starts a public
+demo session on load and opens straight into a workspace. That is the link to
+use when showing the app to someone — the first thing they see should be the
+product working, not a password field. It needs `PUBLIC_DEMO_ENABLED=true`, and
+falls back to the sign-in screen when demo mode is off.
+
+A beat-by-beat script for recording or presenting this:
+[`docs/demo-runbook.md`](docs/demo-runbook.md).
+
 Three questions worth asking, in this order:
 
 1. **"What policies does this workspace define?"** — a cited answer assembled
