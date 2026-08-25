@@ -210,6 +210,7 @@ async def send_message(
         org_id=context.org_id,
         user_id=context.user.id,
         preferred_model=context.preferred_model,
+        require_grounding=context.require_grounding,
         payload=payload,
     )
 
@@ -236,6 +237,7 @@ async def stream_message(
                 org_id=context.org_id,
                 user_id=context.user.id,
                 preferred_model=context.preferred_model,
+                require_grounding=context.require_grounding,
                 payload=payload,
             ):
                 yield (f"event: {event['event']}\n" f"data: {json.dumps(event['data'])}\n\n")

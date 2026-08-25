@@ -35,6 +35,7 @@ from app.schemas.analysis import (
     ReportSection,
     ReportSeries,
 )
+from app.services.rag_service import ANSWER_VOICE
 from app.services.report_profiler import build_profiler_code
 from app.services.usage_service import UsageService
 
@@ -66,7 +67,7 @@ name specific computed figures.
 optional color) fields to exact column names of that series. Prefer line/area for series \
 over time, bar for category comparisons. At most 3 charts per section.
 - State honest limitations only when the evidence is genuinely thin.
-- Do not discuss code, methodology, tokens, or the analysis process."""
+- Do not discuss code, methodology, tokens, or the analysis process.""" + ANSWER_VOICE
 
 
 class ReportService:

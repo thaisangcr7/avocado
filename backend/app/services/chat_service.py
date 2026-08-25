@@ -261,6 +261,7 @@ class ChatService:
         org_id: uuid.UUID,
         user_id: uuid.UUID,
         preferred_model: str | None,
+        require_grounding: bool,
         payload: MessageCreate,
     ) -> ChatTurnResponse:
         conversation = await self._require(conversation_id, workspace_id)
@@ -288,11 +289,13 @@ class ChatService:
                 in_tokens,
                 out_tokens,
                 latency_ms,
+                grounded,
             ) = await self._rag.answer(
                 workspace_id=workspace_id,
                 question=payload.content,
                 history=history,
                 preferred_model=preferred_model,
+                require_grounding=require_grounding,
                 document_ids=payload.document_ids or None,
                 web_search=await self._web_search_enabled(conversation_id),
                 tools=ToolRunner(self._servers) if self._servers else None,
@@ -314,6 +317,7 @@ class ChatService:
                 role=MessageRole.ASSISTANT,
                 content=answer,
                 citations=[c.model_dump(mode="json") for c in citations],
+                grounded=grounded,
                 model_used=model_used,
                 input_tokens=in_tokens,
                 output_tokens=out_tokens,
@@ -416,6 +420,7 @@ class ChatService:
         org_id: uuid.UUID,
         user_id: uuid.UUID,
         preferred_model: str | None,
+        require_grounding: bool,
         payload: MessageCreate,
     ) -> AsyncIterator[dict]:
         """Run a turn, choosing full-data analysis or grounded retrieval.
@@ -469,13 +474,18 @@ class ChatService:
                 0,
                 0,
                 0,
+                grounded=True,
                 record_usage=False,
                 report_artifact=artifact,
             )
             yield {"event": "report_completed", "data": {"report": artifact}}
             yield {
                 "event": "done",
-                "data": {"model": report.model_used or "", "citations": []},
+                "data": {
+                    "model": report.model_used or "",
+                    "citations": [],
+                    "grounded": True,
+                },
             }
             return
 
@@ -519,6 +529,7 @@ class ChatService:
                 0,
                 0,
                 run.execution_ms or 0,
+                grounded=True,
                 record_usage=False,
             )
             yield {
@@ -531,7 +542,11 @@ class ChatService:
             }
             yield {
                 "event": "done",
-                "data": {"model": run.model_used or "", "citations": []},
+                "data": {
+                    "model": run.model_used or "",
+                    "citations": [],
+                    "grounded": True,
+                },
             }
             return
 
@@ -540,18 +555,50 @@ class ChatService:
             question=payload.content,
             document_ids=payload.document_ids or None,
         )
+
+        if not hits:
+            text, citations, model_used, in_tokens, out_tokens, latency_ms, grounded = (
+                await self._rag.answer(
+                    workspace_id=workspace_id,
+                    question=payload.content,
+                    history=history,
+                    preferred_model=preferred_model,
+                    require_grounding=require_grounding,
+                    document_ids=payload.document_ids or None,
+                    web_search=await self._web_search_enabled(conversation_id),
+                    tools=ToolRunner(self._servers) if self._servers else None,
+                    tool_slugs=await self._mcp_servers_enabled(conversation_id),
+                    preset_prompt=preset.system_prompt if preset else None,
+                )
+            )
+            yield {"event": "token", "data": {"text": text}}
+            await self._finish_stream(
+                conversation_id,
+                workspace_id,
+                org_id,
+                user_id,
+                text,
+                citations,
+                model_used,
+                in_tokens,
+                out_tokens,
+                latency_ms,
+                grounded=grounded,
+                preset=preset,
+            )
+            yield {
+                "event": "done",
+                "data": {
+                    "model": model_used or "",
+                    "citations": [],
+                    "grounded": grounded,
+                },
+            }
+            return
+
         provider, spec = self._router.resolve(
             task=TaskType.SYNTHESIS, preferred_model=preferred_model
         )
-
-        if not hits:
-            text = "I could not find anything in this workspace's documents that " "answers that."
-            yield {"event": "token", "data": {"text": text}}
-            await self._finish_stream(
-                conversation_id, workspace_id, org_id, user_id, text, [], spec.id, 0, 0, 0
-            )
-            yield {"event": "done", "data": {"model": spec.id, "citations": []}}
-            return
 
         # Sources are sent up front: the reader can start checking them while
         # the answer is still being written.
@@ -613,6 +660,7 @@ class ChatService:
             usage_in,
             usage_out,
             0,
+            grounded=True,
             preset=preset,
         )
         yield {
@@ -620,6 +668,7 @@ class ChatService:
             "data": {
                 "model": model_used,
                 "citations": [c.model_dump(mode="json") for c in citations],
+                "grounded": True,
             },
         }
 
@@ -636,6 +685,7 @@ class ChatService:
         out_tokens: int,
         latency_ms: int,
         *,
+        grounded: bool | None = None,
         record_usage: bool = True,
         report_artifact: dict | None = None,
         preset: Preset | None = None,
@@ -647,6 +697,7 @@ class ChatService:
                 role=MessageRole.ASSISTANT,
                 content=answer,
                 citations=[c.model_dump(mode="json") for c in citations],
+                grounded=grounded,
                 report_artifact=report_artifact,
                 model_used=model_used,
                 input_tokens=in_tokens,

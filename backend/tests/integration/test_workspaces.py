@@ -19,6 +19,7 @@ async def test_registration_creates_exactly_one_default_workspace(client, accoun
     assert workspaces[0]["name"] == "My Workspace"
     # Null preferred_model means Auto.
     assert workspaces[0]["preferred_model"] is None
+    assert workspaces[0]["require_grounding"] is True
 
 
 async def test_a_workspace_can_be_created_read_updated_and_deleted(client, account):
@@ -35,12 +36,17 @@ async def test_a_workspace_can_be_created_read_updated_and_deleted(client, accou
 
     updated = await client.patch(
         f"/workspaces/{workspace_id}",
-        json={"name": "Finance & Ops", "preferred_model": "fake-fast"},
+        json={
+            "name": "Finance & Ops",
+            "preferred_model": "fake-fast",
+            "require_grounding": False,
+        },
         headers=account["headers"],
     )
     assert updated.status_code == 200
     assert updated.json()["name"] == "Finance & Ops"
     assert updated.json()["preferred_model"] == "fake-fast"
+    assert updated.json()["require_grounding"] is False
 
     deleted = await client.delete(f"/workspaces/{workspace_id}", headers=account["headers"])
     assert deleted.status_code == 200

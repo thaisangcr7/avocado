@@ -86,6 +86,7 @@ class WorkspaceService:
                 name=payload.name,
                 description=payload.description,
                 preferred_model=payload.preferred_model,
+                require_grounding=payload.require_grounding,
             )
         )
         await self._workspaces.commit()

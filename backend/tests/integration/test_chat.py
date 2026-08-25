@@ -96,6 +96,7 @@ async def test_a_cited_answer_carries_its_sources(client, account, fake_llm):
 
     citations = response.json()["assistant_message"]["citations"]
     assert len(citations) == 1
+    assert response.json()["assistant_message"]["grounded"] is True
     citation = citations[0]
     assert citation["document_name"] == "policy.txt"
     assert citation["snippet"]
@@ -146,6 +147,7 @@ async def test_a_greeting_is_answered_rather_than_searched_for(client, account, 
     assert "could not find" not in answer["content"].lower()
     # Nothing was retrieved, so nothing may be cited whatever the reply says.
     assert answer["citations"] == []
+    assert answer["grounded"] is False
 
 
 async def test_an_unanswerable_question_still_says_so(client, account, fake_llm):
@@ -162,6 +164,7 @@ async def test_an_unanswerable_question_still_says_so(client, account, fake_llm)
     )
     answer = response.json()["assistant_message"]
     assert answer["citations"] == []
+    assert answer["grounded"] is False
 
     # The prompt that produced it is the guarantee, so assert the instruction
     # is actually being sent rather than trusting the fake's scripted reply.
@@ -192,6 +195,37 @@ async def test_an_empty_workspace_answers_even_with_no_provider_configured(clien
     assert "could not find" in answer["content"].lower()
     # No model was involved, and the response says so rather than naming one.
     assert answer["model_used"] is None
+    assert answer["grounded"] is False
+
+
+async def test_general_fallback_mode_answers_without_workspace_matches(client, account, fake_llm):
+    """When grounding is optional, no-hit turns can still get a useful general answer."""
+    workspace_id = account["workspace_id"]
+    updated = await client.patch(
+        f"/workspaces/{workspace_id}",
+        json={"require_grounding": False},
+        headers=account["headers"],
+    )
+    assert updated.status_code == 200
+
+    conversation_id = await new_conversation(client, account)
+    fake_llm.responses = [
+        "This is a general answer, not from your uploaded documents."
+    ]
+    response = await client.post(
+        f"/workspaces/{workspace_id}/conversations/{conversation_id}/messages",
+        json={"content": "What is a typical PTO rollover policy?"},
+        headers=account["headers"],
+    )
+
+    assert response.status_code == 201
+    answer = response.json()["assistant_message"]
+    assert answer["citations"] == []
+    assert answer["grounded"] is False
+
+    system = fake_llm.calls[-1]["system"]
+    assert "general knowledge" in system
+    assert "not grounded" in system
 
 
 async def test_the_first_exchange_names_the_thread(client, account, fake_llm):
@@ -680,7 +714,7 @@ async def test_a_preset_applies_to_the_streamed_turn_too(client, account, fake_l
     system = fake_llm.calls[-1]["system"]
     assert "Answer in exactly one sentence." in system
     # And the built-in guarantees still have the last word.
-    assert system.index("Answer in exactly one sentence.") < system.index("Cite the source")
+    assert system.index("Answer in exactly one sentence.") < system.index("Cite sources")
 
     messages = await client.get(
         f"/workspaces/{account['workspace_id']}/conversations/{conversation_id}/messages",

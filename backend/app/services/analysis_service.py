@@ -38,6 +38,7 @@ from app.repositories.documents import DocumentRepository, DocumentTableReposito
 from app.schemas.analysis import AnalysisPresentation, AnalysisRunResponse
 from app.schemas.artifacts import ArtifactForCreate
 from app.services.artifact_service import ArtifactService
+from app.services.rag_service import ANSWER_VOICE
 from app.services.usage_service import UsageService
 
 log = get_logger(__name__)
@@ -100,7 +101,7 @@ comparison, point for relationships, arc only for a small part-to-whole, and \
 boxplot for distributions.
 - Every encoding field must exactly match a column in the selected result table.
 - Prefer one excellent chart over multiple redundant charts.
-- Do not discuss code, methodology, tokens, or the analysis process."""
+- Do not discuss code, methodology, tokens, or the analysis process.""" + ANSWER_VOICE
 
 
 def _artifact_title(question: str) -> str:

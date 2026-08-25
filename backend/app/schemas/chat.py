@@ -105,6 +105,9 @@ class MessageResponse(ApiModel):
     role: MessageRole
     content: str
     citations: list[dict] = []
+    # True when grounded in workspace evidence. False for general fallback
+    # answers. Null for non-assistant turns.
+    grounded: bool | None = None
     # A whole-workspace executive report artifact, when this message is one.
     report_artifact: dict | None = None
     # True when this records a failed generation rather than an answer.

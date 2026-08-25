@@ -15,6 +15,7 @@ class WorkspaceCreate(BaseModel):
     description: str | None = Field(default=None, max_length=1000)
     # Null means "Auto" — the router picks per request.
     preferred_model: str | None = Field(default=None, max_length=100)
+    require_grounding: bool = True
     team_id: uuid.UUID | None = None
 
 
@@ -22,6 +23,7 @@ class WorkspaceUpdate(BaseModel):
     name: str | None = Field(default=None, min_length=1, max_length=200)
     description: str | None = Field(default=None, max_length=1000)
     preferred_model: str | None = Field(default=None, max_length=100)
+    require_grounding: bool | None = None
 
 
 class WorkspaceResponse(ApiModel):
@@ -30,6 +32,7 @@ class WorkspaceResponse(ApiModel):
     name: str
     description: str | None
     preferred_model: str | None
+    require_grounding: bool
     created_at: datetime
     updated_at: datetime
 

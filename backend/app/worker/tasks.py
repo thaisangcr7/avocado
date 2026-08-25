@@ -268,12 +268,14 @@ async def run_due_schedules(
                     embeddings=embeddings,
                     router=model_router,
                 )
-                answer, citations, model_used, in_tokens, out_tokens, latency = await rag.answer(
-                    workspace_id=workspace_id,
-                    question=schedule.prompt,
-                    history=[],
-                    preferred_model=None,
-                    preset_prompt=preset.system_prompt if preset else None,
+                answer, citations, model_used, in_tokens, out_tokens, latency, grounded = (
+                    await rag.answer(
+                        workspace_id=workspace_id,
+                        question=schedule.prompt,
+                        history=[],
+                        preferred_model=None,
+                        preset_prompt=preset.system_prompt if preset else None,
+                    )
                 )
 
                 await messages.add(
@@ -295,6 +297,7 @@ async def run_due_schedules(
                         input_tokens=in_tokens,
                         output_tokens=out_tokens,
                         latency_ms=latency,
+                        grounded=grounded,
                         preset_id=preset.id if preset else None,
                         preset_version=preset.version if preset else None,
                     )

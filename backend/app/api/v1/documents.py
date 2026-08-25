@@ -75,20 +75,20 @@ async def upload_document(
     # Read in bounded chunks and stop the moment the limit is passed, rather
     # than buffering an arbitrarily large body first and checking after.
     limit = settings.max_upload_bytes
-    parts: list[bytes] = []
+    buffer = bytearray()
     total = 0
-    while chunk := await file.read(1024 * 1024):
+    while chunk := await file.read(4 * 1024 * 1024):
         total += len(chunk)
         if total > limit:
             raise PayloadTooLargeError(f"Files must be {limit // (1024 * 1024)}MB or smaller.")
-        parts.append(chunk)
+        buffer.extend(chunk)
 
     return await service.upload(
         workspace_id=context.id,
         user_id=context.user.id,
         filename=file.filename or "upload",
         content_type=file.content_type or "application/octet-stream",
-        data=b"".join(parts),
+        data=bytes(buffer),
         conversation_id=conversation_id,
     )
 

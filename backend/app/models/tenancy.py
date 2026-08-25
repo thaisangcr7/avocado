@@ -127,4 +127,13 @@ class Workspace(Base, UUIDPrimaryKeyMixin, TimestampMixin):
     # id here pins every request in the workspace to that model.
     preferred_model: Mapped[str | None] = mapped_column(String(100))
 
+    # True keeps the assistant strictly document-grounded. False allows a
+    # general fallback answer when retrieval finds no workspace evidence.
+    require_grounding: Mapped[bool] = mapped_column(
+        Boolean,
+        nullable=False,
+        default=True,
+        server_default="true",
+    )
+
     team: Mapped[Team] = relationship(back_populates="workspaces")

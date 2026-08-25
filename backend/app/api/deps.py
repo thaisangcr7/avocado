@@ -630,6 +630,10 @@ class WorkspaceContext:
     def preferred_model(self) -> str | None:
         return self.workspace.preferred_model
 
+    @property
+    def require_grounding(self) -> bool:
+        return self.workspace.require_grounding
+
 
 async def get_workspace_context(
     workspace_id: uuid.UUID,

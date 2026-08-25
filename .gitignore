@@ -17,6 +17,9 @@ dist/
 .vite/
 *.tsbuildinfo
 
+# Ad-hoc test/run logs
+*.rt.log
+
 # Environment — never commit real secrets
 .env
 .env.*

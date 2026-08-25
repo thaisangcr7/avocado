@@ -26,6 +26,7 @@ from app.repositories.conversations import ConversationRepository, MessageReposi
 from app.repositories.projects import ProjectRepository, TaskRepository
 from app.schemas.projects import TaskResponse, TaskResumeResponse
 from app.services.project_service import ProjectService
+from app.services.rag_service import ANSWER_VOICE
 
 log = get_logger(__name__)
 
@@ -42,7 +43,7 @@ Cover, in at most four sentences:
 
 Write plain prose addressed to the person returning. Do not greet them, do not \
 restate the task title, and do not invent anything the messages do not say. If \
-the thread is too thin to summarise, say so in one sentence."""
+the thread is too thin to summarise, say so in one sentence.""" + ANSWER_VOICE
 
 
 class TaskResumeService:
