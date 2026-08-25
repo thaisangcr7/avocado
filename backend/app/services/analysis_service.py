@@ -83,7 +83,8 @@ CODE_SCHEMA = {
     "additionalProperties": False,
 }
 
-PRESENTATION_PROMPT = """Design a useful analytical dashboard from computed results.
+PRESENTATION_PROMPT = (
+    """Design a useful analytical dashboard from computed results.
 
 Rules:
 - The computed results are the only evidence. Never invent a number, field, or category.
@@ -101,7 +102,9 @@ comparison, point for relationships, arc only for a small part-to-whole, and \
 boxplot for distributions.
 - Every encoding field must exactly match a column in the selected result table.
 - Prefer one excellent chart over multiple redundant charts.
-- Do not discuss code, methodology, tokens, or the analysis process.""" + ANSWER_VOICE
+- Do not discuss code, methodology, tokens, or the analysis process."""
+    + ANSWER_VOICE
+)
 
 
 def _artifact_title(question: str) -> str:

@@ -33,7 +33,8 @@ log = get_logger(__name__)
 # Enough of the thread to summarise without resending an entire history.
 RESUME_WINDOW = 20
 
-RESUME_PROMPT = """Summarise where this piece of work stands, for someone \
+RESUME_PROMPT = (
+    """Summarise where this piece of work stands, for someone \
 returning to it after a few days.
 
 Cover, in at most four sentences:
@@ -43,7 +44,9 @@ Cover, in at most four sentences:
 
 Write plain prose addressed to the person returning. Do not greet them, do not \
 restate the task title, and do not invent anything the messages do not say. If \
-the thread is too thin to summarise, say so in one sentence.""" + ANSWER_VOICE
+the thread is too thin to summarise, say so in one sentence."""
+    + ANSWER_VOICE
+)
 
 
 class TaskResumeService:

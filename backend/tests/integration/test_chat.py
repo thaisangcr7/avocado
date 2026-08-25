@@ -209,9 +209,7 @@ async def test_general_fallback_mode_answers_without_workspace_matches(client, a
     assert updated.status_code == 200
 
     conversation_id = await new_conversation(client, account)
-    fake_llm.responses = [
-        "This is a general answer, not from your uploaded documents."
-    ]
+    fake_llm.responses = ["This is a general answer, not from your uploaded documents."]
     response = await client.post(
         f"/workspaces/{workspace_id}/conversations/{conversation_id}/messages",
         json={"content": "What is a typical PTO rollover policy?"},

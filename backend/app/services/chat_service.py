@@ -557,19 +557,25 @@ class ChatService:
         )
 
         if not hits:
-            text, citations, model_used, in_tokens, out_tokens, latency_ms, grounded = (
-                await self._rag.answer(
-                    workspace_id=workspace_id,
-                    question=payload.content,
-                    history=history,
-                    preferred_model=preferred_model,
-                    require_grounding=require_grounding,
-                    document_ids=payload.document_ids or None,
-                    web_search=await self._web_search_enabled(conversation_id),
-                    tools=ToolRunner(self._servers) if self._servers else None,
-                    tool_slugs=await self._mcp_servers_enabled(conversation_id),
-                    preset_prompt=preset.system_prompt if preset else None,
-                )
+            (
+                text,
+                citations,
+                model_used,
+                in_tokens,
+                out_tokens,
+                latency_ms,
+                grounded,
+            ) = await self._rag.answer(
+                workspace_id=workspace_id,
+                question=payload.content,
+                history=history,
+                preferred_model=preferred_model,
+                require_grounding=require_grounding,
+                document_ids=payload.document_ids or None,
+                web_search=await self._web_search_enabled(conversation_id),
+                tools=ToolRunner(self._servers) if self._servers else None,
+                tool_slugs=await self._mcp_servers_enabled(conversation_id),
+                preset_prompt=preset.system_prompt if preset else None,
             )
             yield {"event": "token", "data": {"text": text}}
             await self._finish_stream(
