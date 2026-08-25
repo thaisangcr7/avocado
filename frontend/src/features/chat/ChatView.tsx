@@ -147,7 +147,11 @@ export function ChatView({
     setIsStreaming(true)
 
     // Show the user's message immediately rather than waiting for the round
-    // trip — the request is already on its way.
+    // trip — the request is already on its way. The in-flight fetch is
+    // cancelled first: a conversation created a moment ago has one on the way,
+    // and it resolves empty, which would wipe the question off the screen
+    // until the first token arrived.
+    await queryClient.cancelQueries({ queryKey: queryKeys.messages(conversationId) })
     queryClient.setQueryData<Message[]>(queryKeys.messages(conversationId), (existing) => [
       ...(existing ?? []),
       {
