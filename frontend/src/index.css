@@ -45,6 +45,18 @@
 }
 
 @layer base {
+  *,
+  *::before,
+  *::after {
+    box-sizing: border-box;
+  }
+
+  html,
+  body,
+  #root {
+    height: 100%;
+  }
+
   html {
     color-scheme: light;
   }
@@ -54,6 +66,7 @@
   }
 
   body {
+    margin: 0;
     background-color: var(--color-surface);
     color: var(--color-ink);
     -webkit-font-smoothing: antialiased;
@@ -168,6 +181,23 @@
     .animate-stagger > *,
     .animate-pulse-soft {
       animation: none;
+    }
+  }
+
+  /* Compact chat layout for short viewports (landscape phones/small windows). */
+  @media (max-height: 560px) {
+    .chat-meta-rows {
+      display: none;
+    }
+
+    .chat-composer {
+      padding-top: 0.5rem;
+      padding-bottom: 0.5rem;
+    }
+
+    .chat-scroll-host {
+      padding-top: 0.5rem;
+      padding-bottom: 0.5rem;
     }
   }
 }

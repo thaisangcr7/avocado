@@ -40,6 +40,8 @@ const TYPE_ICON: Record<string, string> = {
   audio: '🎙️',
 }
 
+const MAX_CONCURRENT_UPLOADS = 3
+
 /**
  * Files split by where they came from.
  *
@@ -127,19 +129,36 @@ export function DocumentPanel({
     async (files: FileList | null) => {
       if (!files?.length) return
       setUploadError(null)
-      // Sequential rather than parallel: the server rate-limits, and a failure
-      // partway through is easier to explain when the order is deterministic.
-      for (const file of Array.from(files)) {
-        try {
-          await upload.mutateAsync(file)
-        } catch (error) {
-          setUploadError(
-            error instanceof ApiError
-              ? `${file.name}: ${error.message}`
-              : `${file.name}: upload failed.`,
-          )
-          break
-        }
+      const pending = Array.from(files)
+      const failures: string[] = []
+
+      // A few parallel uploads are much faster than strict serial mode,
+      // while still staying gentle on the API and queue.
+      for (let index = 0; index < pending.length; index += MAX_CONCURRENT_UPLOADS) {
+        const batch = pending.slice(index, index + MAX_CONCURRENT_UPLOADS)
+        const results = await Promise.all(
+          batch.map(async (file) => {
+            try {
+              await upload.mutateAsync(file)
+              return null
+            } catch (error) {
+              return error instanceof ApiError
+                ? `${file.name}: ${error.message}`
+                : `${file.name}: upload failed.`
+            }
+          }),
+        )
+
+        failures.push(...results.filter((entry): entry is string => Boolean(entry)))
+      }
+
+      if (failures.length > 0) {
+        const first = failures[0] ?? 'Upload failed.'
+        setUploadError(
+          failures.length > 1
+            ? `${first} (${failures.length - 1} more failed)`
+            : first,
+        )
       }
     },
     [upload],

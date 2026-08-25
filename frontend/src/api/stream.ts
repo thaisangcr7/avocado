@@ -34,7 +34,7 @@ export interface StreamHandlers {
   }) => void
   onReportStarted?: () => void
   onReportCompleted?: (report: ExecutiveReport) => void
-  onDone?: (result: { model: string; citations: Citation[] }) => void
+  onDone?: (result: { model: string; citations: Citation[]; grounded?: boolean }) => void
   onError?: (detail: string) => void
 }
 
@@ -112,7 +112,7 @@ export async function streamMessage(
         handlers.onReportCompleted?.((data as { report: ExecutiveReport }).report)
         break
       case 'done':
-        handlers.onDone?.(data as { model: string; citations: Citation[] })
+        handlers.onDone?.(data as { model: string; citations: Citation[]; grounded?: boolean })
         break
       case 'error':
         handlers.onError?.((data as { detail: string }).detail)

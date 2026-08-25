@@ -70,14 +70,24 @@ export const authApi = {
 export const workspaceApi = {
   list: () => http.get<Workspace[]>('/workspaces'),
 
-  create: (payload: { name: string; description?: string; preferred_model?: string | null }) =>
+  create: (payload: {
+    name: string
+    description?: string
+    preferred_model?: string | null
+    require_grounding?: boolean
+  }) =>
     http.post<Workspace>('/workspaces', payload),
 
   get: (id: string) => http.get<Workspace>(`/workspaces/${id}`),
 
   update: (
     id: string,
-    payload: { name?: string; description?: string; preferred_model?: string | null },
+    payload: {
+      name?: string
+      description?: string
+      preferred_model?: string | null
+      require_grounding?: boolean
+    },
   ) => http.patch<Workspace>(`/workspaces/${id}`, payload),
 
   remove: (id: string) => http.delete<{ message: string }>(`/workspaces/${id}`),

@@ -74,10 +74,12 @@ export function ChatView({
   const queryClient = useQueryClient()
   const upload = useUploadDocument(workspaceId)
   const fileInputRef = useRef<HTMLInputElement>(null)
+  const scrollHostRef = useRef<HTMLDivElement>(null)
 
   const [draft, setDraft] = useState('')
   const [streamingText, setStreamingText] = useState('')
   const [streamingSources, setStreamingSources] = useState<StreamSource[]>([])
+  const [streamingGrounded, setStreamingGrounded] = useState<boolean | null>(null)
   const [analysisDocumentName, setAnalysisDocumentName] = useState<string | null>(null)
   const [reportRunning, setReportRunning] = useState(false)
   const [isStreaming, setIsStreaming] = useState(false)
@@ -98,8 +100,18 @@ export function ChatView({
 
   // Follow the conversation as it grows, including while tokens arrive.
   useEffect(() => {
+    if (!conversationId) return
+    const hasContent = (messages?.length ?? 0) > 0 || streamingText.length > 0
+    if (!hasContent) return
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
-  }, [messages, streamingText])
+  }, [conversationId, messages, streamingText])
+
+  // Landing mode should always open from the top so the hero and suggestions
+  // are visible rather than inheriting a stale scroll offset.
+  useEffect(() => {
+    if (conversationId) return
+    scrollHostRef.current?.scrollTo({ top: 0, behavior: 'auto' })
+  }, [conversationId])
 
   // Abort an in-flight stream when the user navigates away, or the server
   // keeps generating into a response nobody is reading.
@@ -115,6 +127,7 @@ export function ChatView({
     setError(null)
     setStreamingText('')
     setStreamingSources([])
+    setStreamingGrounded(null)
     setAnalysisDocumentName(null)
     setReportRunning(false)
     setIsStreaming(true)
@@ -167,7 +180,10 @@ export function ChatView({
           // The report is persisted on the assistant message; the refetch on
           // `done` renders it in place. Nothing to hold in transient state.
         },
-        onDone: () => {
+        onDone: (result) => {
+          setStreamingGrounded(
+            typeof result.grounded === 'boolean' ? result.grounded : null,
+          )
           setIsStreaming(false)
           setStreamingText('')
           setStreamingSources([])
@@ -268,7 +284,10 @@ export function ChatView({
         />
       )}
 
-      <div className="min-h-0 flex-1 overflow-y-auto px-4 py-6 sm:px-6">
+      <div
+        ref={scrollHostRef}
+        className="chat-scroll-host min-h-0 flex-1 overflow-y-auto px-4 py-3 sm:px-6 sm:py-6"
+      >
         {!conversationId ? (
           <StartHere
             workspaceId={workspaceId}
@@ -295,6 +314,7 @@ export function ChatView({
               <StreamingBubble
                 text={streamingText}
                 sources={streamingSources}
+                grounded={streamingGrounded}
                 analysisDocumentName={analysisDocumentName}
                 reportRunning={reportRunning}
               />
@@ -304,11 +324,13 @@ export function ChatView({
         <div ref={bottomRef} />
       </div>
 
-      <div className="border-t border-border-subtle/80 bg-surface-raised/90 px-4 py-4 backdrop-blur-md sm:px-6">
+      <div className="chat-composer border-t border-border-subtle/80 bg-surface-raised/90 px-4 py-4 backdrop-blur-md sm:px-6">
         <div className="mx-auto max-w-3xl">
-          <ContextGauge messages={messages} models={models?.models} />
+          <div className="chat-meta-rows">
+            <ContextGauge messages={messages} models={models?.models} />
 
-          <SuggestionsBar workspaceId={workspaceId} onOpenTask={onOpenTask} />
+            <SuggestionsBar workspaceId={workspaceId} onOpenTask={onOpenTask} />
+          </div>
 
           {error && (
             <div className="mb-3">
@@ -526,8 +548,8 @@ function StartHere({
 
   if (!ready.length) {
     return (
-      <div className="flex h-full justify-center overflow-y-auto px-4 py-10 sm:px-6">
-        <div className="animate-in-slow my-auto w-full max-w-2xl space-y-6">
+      <div className="flex justify-center px-4 py-4 sm:px-6 sm:py-10">
+        <div className="animate-in-slow w-full max-w-2xl space-y-6">
           <div className="space-y-2 text-center">
             <div
               className="mx-auto flex size-14 items-center justify-center rounded-2xl bg-accent-soft text-2xl shadow-[0_6px_20px_rgba(40,90,50,0.1)]"
@@ -582,8 +604,8 @@ function StartHere({
   const limited = buildOpenings(ready).slice(0, 6)
 
   return (
-    <div className="flex h-full justify-center overflow-y-auto px-4 py-10 sm:px-6">
-      <div className="animate-in-slow my-auto w-full max-w-lg space-y-7">
+    <div className="flex justify-center px-4 py-4 sm:px-6 sm:py-10">
+      <div className="animate-in-slow w-full max-w-lg space-y-7">
         <div className="space-y-3 text-center">
           <div
             className="mx-auto flex size-14 items-center justify-center rounded-2xl bg-accent-soft text-2xl shadow-[0_6px_20px_rgba(40,90,50,0.1)]"
@@ -907,10 +929,22 @@ function MessageBubble({ message }: { message: Message }) {
       <div className={cn(isUser ? 'max-w-[80%]' : 'min-w-0 flex-1')}>
         {!isUser && !message.failed && (
           <div className="mb-2 flex items-center justify-between">
-            <span className="text-xs font-semibold text-ink">Avocado</span>
-            {message.model_used && (
-              <span className="text-[11px] text-ink-muted">{message.model_used}</span>
-            )}
+            <div className="flex items-center gap-2">
+              <span className="text-xs font-semibold text-ink">Avocado</span>
+              {message.grounded === false && (
+                <span className="rounded-full border border-amber-300/60 bg-amber-50 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-amber-700">
+                  General answer
+                </span>
+              )}
+            </div>
+            <div className="flex items-center gap-2">
+              {message.grounded === false && (
+                <span className="text-[11px] text-ink-muted">Not from documents</span>
+              )}
+              {message.model_used && (
+                <span className="text-[11px] text-ink-muted">{message.model_used}</span>
+              )}
+            </div>
           </div>
         )}
         <div
@@ -1022,11 +1056,13 @@ function CitationList({ citations }: { citations: Citation[] }) {
 function StreamingBubble({
   text,
   sources,
+  grounded,
   analysisDocumentName,
   reportRunning,
 }: {
   text: string
   sources: StreamSource[]
+  grounded: boolean | null
   analysisDocumentName: string | null
   reportRunning: boolean
 }) {
@@ -1044,6 +1080,11 @@ function StreamingBubble({
           <p className="mb-3 flex items-center gap-2 text-xs text-ink-muted">
             <span className="size-1.5 animate-pulse-soft rounded-full bg-accent" />
             Read {sources.length} source{sources.length === 1 ? '' : 's'} · writing answer…
+          </p>
+        )}
+        {grounded === false && (
+          <p className="mb-3 text-xs text-ink-muted">
+            General answer · not from your uploaded documents.
           </p>
         )}
         <div className="text-ink">

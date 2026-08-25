@@ -38,7 +38,7 @@ export function ArtifactPanel({
   onOpenAnalysis?: (documentId: string, run?: AnalysisRun) => void
 }) {
   return (
-    <div className="flex h-full flex-col gap-2 overflow-y-auto p-2">
+    <div className="flex flex-col gap-2 p-2">
       <section className="rounded-xl border border-border-subtle/70 bg-surface-raised p-3">
         <h3 className="text-[11px] font-semibold uppercase tracking-[0.08em] text-ink-muted">
           Artifacts

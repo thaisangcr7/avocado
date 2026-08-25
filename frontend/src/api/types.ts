@@ -47,6 +47,8 @@ export interface Workspace {
   description: string | null
   /** null means Auto — the router picks per request. */
   preferred_model: string | null
+  /** True keeps answers document-grounded; false allows general fallback answers. */
+  require_grounding: boolean
   created_at: string
   updated_at: string
 }
@@ -135,6 +137,8 @@ export interface Message {
   role: MessageRole
   content: string
   citations: Citation[]
+  /** False means this answer was a general fallback, not from workspace docs. */
+  grounded?: boolean | null
   /** True when this records a failed generation rather than an answer. */
   failed: boolean
   /** A whole-workspace executive report, when this message is one. */

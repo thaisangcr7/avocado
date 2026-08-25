@@ -134,7 +134,12 @@ export function useUpdateWorkspace() {
     mutationFn: ({
       id,
       ...payload
-    }: { id: string; name?: string; preferred_model?: string | null }) =>
+    }: {
+      id: string
+      name?: string
+      preferred_model?: string | null
+      require_grounding?: boolean
+    }) =>
       workspaceApi.update(id, payload),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: queryKeys.workspaces }),
   })

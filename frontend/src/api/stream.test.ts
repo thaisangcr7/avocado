@@ -48,7 +48,7 @@ describe('streamMessage', () => {
       'event: citations\ndata: {"sources":[{"index":1,"document_id":"d1","document_name":"a.pdf","score":0.9}]}\n\n',
       'event: token\ndata: {"text":"Hello "}\n\n',
       'event: token\ndata: {"text":"world"}\n\n',
-      'event: done\ndata: {"model":"claude-opus-5","citations":[]}\n\n',
+      'event: done\ndata: {"model":"claude-opus-5","citations":[],"grounded":true}\n\n',
     ])
 
     await streamMessage('w1', 'c1', { content: 'hi' }, handlers)
@@ -60,6 +60,7 @@ describe('streamMessage', () => {
     expect(handlers.onDone).toHaveBeenCalledWith({
       model: 'claude-opus-5',
       citations: [],
+      grounded: true,
     })
     expect(handlers.onError).not.toHaveBeenCalled()
   })

@@ -40,6 +40,12 @@ type RightPanelView = LibraryTab | 'analysis' | 'task' | 'team'
 export function WorkspaceShell() {
   const { data: workspaces, isLoading } = useWorkspaces()
   const { activeWorkspaceId, setActiveWorkspace } = useWorkspaceStore()
+  const resolvedWorkspace = useMemo(
+    () => workspaces?.find((w) => w.id === activeWorkspaceId) ?? null,
+    [workspaces, activeWorkspaceId],
+  )
+  const workspace = resolvedWorkspace ?? (workspaces?.[0] ?? null)
+  const effectiveWorkspaceId = workspace?.id ?? null
   const [activeConversationId, setActiveConversationId] = useState<string | null>(null)
   const [analysisDocumentId, setAnalysisDocumentId] = useState<string | null>(null)
   const [analysisRun, setAnalysisRun] = useState<AnalysisRun | null>(null)
@@ -64,7 +70,7 @@ export function WorkspaceShell() {
   // A question picked on the landing pane, held until the conversation it
   // will be asked in has been created.
   const [pendingQuestion, setPendingQuestion] = useState<string | null>(null)
-  const startConversation = useCreateConversation(activeWorkspaceId ?? '')
+  const startConversation = useCreateConversation(effectiveWorkspaceId ?? '')
   const demoWorkspaces = useMemo(
     () => (workspaces ?? []).filter((workspace) => /northwind|demo/i.test(workspace.name)),
     [workspaces],
@@ -118,10 +124,8 @@ export function WorkspaceShell() {
     )
   }
 
-  const workspace = workspaces?.find((w) => w.id === activeWorkspaceId) ?? null
-
   return (
-    <div className="bg-atmosphere flex h-screen flex-col">
+    <div className="bg-atmosphere fixed inset-0 flex flex-col overflow-hidden">
       <TopBar
         threadsOpen={threadsOpen}
         rightOpen={rightOpen}
@@ -218,17 +222,17 @@ export function WorkspaceShell() {
           </div>
           <WorkspaceSwitcher />
           <ConversationList
-            workspaceId={activeWorkspaceId}
+            workspaceId={effectiveWorkspaceId}
             activeConversationId={activeConversationId}
             onSelect={(id) => {
               setActiveConversationId(id)
               if (window.innerWidth < 1024) setThreadsOpen(false)
             }}
           />
-          <WorkspaceFooter workspaceId={activeWorkspaceId} />
+          <WorkspaceFooter workspaceId={effectiveWorkspaceId} />
         </aside>
 
-        <main className="min-w-0 flex-1">
+        <main className="min-h-0 min-w-0 flex-1 overflow-hidden">
           {!workspace ? (
             <div className="flex h-full items-center justify-center text-sm text-ink-muted">
               Create a Space to begin.
@@ -287,9 +291,9 @@ export function WorkspaceShell() {
             rightOpen ? 'flex lg:w-(--rail-w) lg:shrink-0' : 'hidden',
           )}
         >
-          {activeWorkspaceId && (
+          {effectiveWorkspaceId && (
             <LibraryRail
-              workspaceId={activeWorkspaceId}
+              workspaceId={effectiveWorkspaceId}
               conversationId={activeConversationId}
               tab={libraryTab}
               view={rightView}
@@ -648,7 +652,7 @@ function ModelPicker() {
 
   return (
     <label className="hidden items-center gap-1.5 sm:flex">
-      <span className="sr-only">Model</span>
+      <span className="sr-only">Workspace answer settings</span>
       <select
         value={workspace.preferred_model ?? 'auto'}
         onChange={(e) => {
@@ -669,6 +673,21 @@ function ModelPicker() {
           </option>
         ))}
       </select>
+
+      <select
+        value={workspace.require_grounding ? 'grounded' : 'general'}
+        onChange={(e) => {
+          updateWorkspace.mutate({
+            id: workspace.id,
+            require_grounding: e.target.value === 'grounded',
+          })
+        }}
+        className="h-8 max-w-[11rem] cursor-pointer truncate rounded-lg border border-border-subtle/80 bg-surface-sunken px-2 text-sm text-ink transition-colors hover:border-border-subtle focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/20 sm:max-w-none"
+        title="Grounded only answers from your documents. General can answer without matching docs."
+      >
+        <option value="grounded">Grounded only</option>
+        <option value="general">General fallback</option>
+      </select>
     </label>
   )
 }
@@ -676,6 +695,10 @@ function ModelPicker() {
 function WorkspaceSwitcher() {
   const { data: workspaces } = useWorkspaces()
   const { activeWorkspaceId, setActiveWorkspace } = useWorkspaceStore()
+  const selectedWorkspaceId =
+    workspaces?.some((workspace) => workspace.id === activeWorkspaceId)
+      ? (activeWorkspaceId ?? '')
+      : (workspaces?.[0]?.id ?? '')
   const createWorkspace = useCreateWorkspace()
   const [creating, setCreating] = useState(false)
   const [name, setName] = useState('')
@@ -685,7 +708,7 @@ function WorkspaceSwitcher() {
       <label className="block">
         <span className="sr-only">Space</span>
         <select
-          value={activeWorkspaceId ?? ''}
+          value={selectedWorkspaceId}
           onChange={(e) => setActiveWorkspace(e.target.value)}
           className="h-9 w-full rounded-lg border border-border-subtle bg-surface px-2 text-sm font-medium text-ink"
         >
