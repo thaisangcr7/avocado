@@ -95,15 +95,29 @@ export function ChatView({
   const [beforeEnhance, setBeforeEnhance] = useState<string | null>(null)
   const enhance = useEnhanceDraft(workspaceId)
 
-  const bottomRef = useRef<HTMLDivElement>(null)
   const abortRef = useRef<AbortController | null>(null)
 
-  // Follow the conversation as it grows, including while tokens arrive.
+  // Follow the conversation as it grows, including while tokens arrive. The
+  // host is scrolled by hand rather than with `scrollIntoView`, which walks up
+  // and scrolls *every* scrollable ancestor — including a clipped one with no
+  // scrollbar, which slides the whole shell out from under the header.
   useEffect(() => {
     if (!conversationId) return
     const hasContent = (messages?.length ?? 0) > 0 || streamingText.length > 0
     if (!hasContent) return
-    bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
+    const host = scrollHostRef.current
+    if (!host) return
+    // The jump is instant, not smooth: a smooth scroll is restarted by every
+    // token that arrives and by the content swap of opening another thread,
+    // so it never lands — the view sat still through a whole answer and only
+    // caught up once the stream ended.
+    const toBottom = () => host.scrollTo({ top: host.scrollHeight })
+    toBottom()
+    // A message body can still be growing when the effect runs — citation
+    // chips, a report block — so the bottom is chased once more after the
+    // browser has laid the new content out.
+    const again = requestAnimationFrame(toBottom)
+    return () => cancelAnimationFrame(again)
   }, [conversationId, messages, streamingText])
 
   // Landing mode should always open from the top so the hero and suggestions
@@ -321,7 +335,6 @@ export function ChatView({
             )}
           </div>
         )}
-        <div ref={bottomRef} />
       </div>
 
       <div className="chat-composer border-t border-border-subtle/80 bg-surface-raised/90 px-4 py-4 backdrop-blur-md sm:px-6">

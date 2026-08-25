@@ -6,6 +6,7 @@ import { cleanup } from '@testing-library/react'
 // Components legitimately call them; stubbing keeps that from failing tests
 // for a reason that has nothing to do with the behaviour under test.
 Element.prototype.scrollIntoView = vi.fn()
+Element.prototype.scrollTo = vi.fn()
 
 globalThis.ResizeObserver ??= class {
   observe() {}

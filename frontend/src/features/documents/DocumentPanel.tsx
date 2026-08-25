@@ -171,7 +171,7 @@ export function DocumentPanel({
   }
 
   return (
-    <div className="flex h-full flex-col">
+    <div className="flex flex-col">
       <div className="flex items-center justify-between border-b border-border-subtle px-4 py-3">
         <h2 className="text-sm font-semibold text-ink">
           {compactUpload ? 'Files' : 'Documents'}
@@ -265,7 +265,7 @@ export function DocumentPanel({
         )}
       </div>
 
-      <div className="min-h-0 flex-1 overflow-y-auto px-3 pb-3">
+      <div className="px-3 pb-3">
         {isLoading ? (
           <div className="flex justify-center py-8">
             <Spinner className="size-5 text-ink-muted" />

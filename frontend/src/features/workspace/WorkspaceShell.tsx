@@ -154,7 +154,7 @@ export function WorkspaceShell() {
         />
       )}
 
-      <div className="relative flex min-h-0 flex-1 overflow-hidden">
+      <div className="relative flex min-h-0 flex-1 overflow-clip">
         <NavRail
           active={historyOpen ? 'history' : rightOpen ? 'library' : 'chat'}
           onNewChat={newChat}
@@ -232,7 +232,7 @@ export function WorkspaceShell() {
           <WorkspaceFooter workspaceId={effectiveWorkspaceId} />
         </aside>
 
-        <main className="min-h-0 min-w-0 flex-1 overflow-hidden">
+        <main className="min-h-0 min-w-0 flex-1 overflow-clip">
           {!workspace ? (
             <div className="flex h-full items-center justify-center text-sm text-ink-muted">
               Create a Space to begin.
@@ -513,7 +513,7 @@ function LibraryRail({
           // in through this thread, and what the space holds. They were behind
           // tabs, which made them look like alternatives rather than parts of
           // the same library.
-          <div className="h-full overflow-y-auto">
+          <div className="relative h-full overflow-y-auto">
             <ArtifactPanel
               workspaceId={workspaceId}
               onResumeTask={onResumeTask}
