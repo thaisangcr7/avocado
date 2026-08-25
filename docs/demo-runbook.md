@@ -103,9 +103,16 @@ What is the month-over-month revenue trend by region?
 ```
 
 It writes pandas, runs it in a locked-down container, and returns the computed
-result with a chart — and the program that produced it.
+result with a chart — and the program that produced it. The panel shows the
+table profile first (`800 rows x 10 columns`, every column typed), which is
+worth a beat on its own.
 
-> **Point at:** the code tab.
+**Timing, measured:** about seventeen seconds from pressing *Run analysis* to
+the result rendering. That is a cut in the edit, or somewhere to talk over.
+**The result renders below the question box**, so scroll the Library panel down
+to it — do not leave the shot sitting on the button.
+
+> **Point at:** the Method tab, which holds the generated code.
 
 > **Say:** "It ran over the whole file, not the part that fits in a prompt. The
 > number is a computation, and the code is right there to check."
@@ -118,22 +125,45 @@ Back in the chat:
 Give me an executive summary of the whole workspace
 ```
 
-A multi-section dashboard renders: a KPI strip, per-theme sections with status
-badges and charts, and a limits note. **Reload the page.** It is still there.
+A multi-section dashboard renders: a headline verdict with a status badge, a
+KPI strip, per-theme sections with charts, and a **Limits** note. **Reload the
+page.** It is still there.
+
+The limits note is the part to point at. In a measured run it said, unprompted,
+that forecast and actual revenue are separate datasets at different scales and
+should not be summed, and that the support data shows volumes but not
+resolution outcomes, so the backlog gap is a volume signal and not a quality
+one. That is a report arguing with itself in public.
 
 > **Say:** "Every headline figure there is computed across every spreadsheet in
 > the workspace. And it is saved on the message, not regenerated — that is a
 > document the team keeps."
 
-### 2:30 — Beat 5 · The honest empty answer
+### 2:30 — Beat 5 · What happens when the documents do not cover it
 
-Switch the Space picker (top of the threads column) to **Northwind Sandbox**,
-which has no documents, and ask the policy question from Beat 1 again.
+The header carries a grounding control — **Grounded only** / **General
+fallback** — and the strongest version of this beat is to show both, because
+the point is that it is a *setting* rather than a hope.
 
-It says it cannot find this in these sources, rather than answering from
-general knowledge.
+On **General fallback**, ask something the documents plainly do not cover:
 
-> **Say:** "Same model, same question, no documents. It says so."
+```
+What is the capital of France?
+```
+
+It answers — *Paris* — but stamps the reply **GENERAL ANSWER · Not from
+documents** and opens with "this isn't grounded in your uploaded documents".
+
+Then switch the control to **Grounded only**, switch the Space picker to
+**Northwind Sandbox** (empty after a reseed), and ask the policy question from
+Beat 1 again. Now it declines rather than answering.
+
+> **Say:** "Same model, same question. One setting decides whether it may
+> answer from outside your documents — and when it does, it says so on the
+> message."
+
+Check which mode the header is in before you record. It is per-workspace and
+it persists, so it will be wherever it was left.
 
 ### 2:45 — Close
 
@@ -150,8 +180,8 @@ In rough order of how well they show on camera:
 - **Presets** — `/` in the composer. A named system prompt the team shares.
 - **Schedules** — a prompt that runs on a recurrence, with the answer landing
   in history and a notification in the bell.
-- **Grounding mode** — the *Grounded only* / *General fallback* control in the
-  header, switched mid-demo to show the policy is a setting, not a hope.
+- **Artifacts** — the Library's top shelf, holding what previous answers
+  produced. Model-authored HTML renders in a sandboxed null-origin iframe.
 
 ## What not to do on camera
 
@@ -184,4 +214,4 @@ The questions above are chosen so each one shows a *different* property:
 | 2 | Receipt for a $60 taxi | It answers *and* marks the edge of the source |
 | 3 | Month-over-month trend | Real computation over the whole file |
 | 4 | Executive summary | Computed figures, persisted as an artifact |
-| 5 | Same question, empty Space | It declines instead of inventing |
+| 5 | Capital of France, then an empty Space | Off-document answers are labelled, and grounding is a setting |
