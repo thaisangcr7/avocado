@@ -13,6 +13,7 @@ from __future__ import annotations
 import argparse
 import asyncio
 import csv
+import gzip
 import io
 import json
 import os
@@ -35,6 +36,7 @@ from sqlalchemy.ext.asyncio import create_async_engine
 
 DEFAULT_BASE_URL = os.environ.get("AVOCADO_API_BASE_URL", "http://127.0.0.1:8000")
 DEFAULT_OUTPUT_DIR = Path(__file__).resolve().parents[1] / ".demo-data" / "latest"
+VENDORED_FIXTURES_DIR = Path(__file__).resolve().parent / "demo_fixtures"
 
 OWNER_ORG = "Northwind Demo"
 TEAM_NAME = "Northwind Operations"
@@ -742,6 +744,21 @@ class WorkspaceBlueprint:
     populated: bool
 
 
+def load_vendored_orders() -> bytes:
+    """The one dataset in the seed that is real rather than generated.
+
+    Everything else here is synthesised from a seeded RNG, which exercises
+    ingestion but makes a weak demo: the analysis engine's claim is that it
+    computes over a real file, and a file invented to be computed over does
+    not test that claim. Provenance and licence are in demo_fixtures/SOURCE.md.
+
+    Stored gzipped -- 1.2MB against 11MB -- so seeding needs no network and the
+    repository does not carry eleven megabytes of CSV forever.
+    """
+    path = VENDORED_FIXTURES_DIR / "northwind_orders.csv.gz"
+    return gzip.decompress(path.read_bytes())
+
+
 def build_files_for_workspace(
     blueprint: WorkspaceBlueprint, output_dir: Path, rows_per_csv: int
 ) -> list[GeneratedFile]:
@@ -801,6 +818,12 @@ def build_files_for_workspace(
                 data=data,
             )
         )
+
+    # HQ carries the one real dataset, so the analysis beat of a demo runs over
+    # a hundred thousand genuine transactions rather than generated ones.
+    # Finance stays entirely synthetic: its job is to be a second tenant.
+    if "hq" in blueprint.key:
+        csv_builders.append(("northwind_orders.csv", lambda *_: load_vendored_orders()))
 
     for filename, builder in csv_builders:
         path = docs_dir / filename

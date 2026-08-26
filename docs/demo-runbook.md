@@ -95,27 +95,41 @@ thing a general chat assistant does not do.
 
 ### 1:15 — Beat 3 · A number that came from running code
 
-Open the **Library** (top right), find `revenue_by_region.csv`, hit **Analyse**.
-Ask:
+Open the **Library** (top right), find **`northwind_orders.csv`**, hit
+**Analyse**. This is the one real dataset in the seed — 110,064 order lines
+across 2021 and 2022, from Microsoft's Northwind sample database (MIT). Ask:
 
 ```
-What is the month-over-month revenue trend by region?
+Which product category grew the most in revenue from 2021 to 2022, and which sales rep drove it?
 ```
+
+**It refuses the premise.** The measured answer opens: *"No category actually
+grew — every one of the eight lost revenue from 2021 to 2022. Dairy Products
+held up best, slipping just -2.2%, so it's the 'top' performer only in the
+sense of shrinking least."* Then it names who kept Dairy afloat, with figures.
+
+> **Say:** "I asked which category grew. It checked, and told me none of them
+> did — then answered the question I should have asked."
+
+That is the beat. A tool that pattern-matches the question hands you a
+fastest-growing category and you never learn the business is shrinking.
 
 It writes pandas, runs it in a locked-down container, and returns the computed
 result with a chart — and the program that produced it. The panel shows the
 table profile first (`800 rows x 10 columns`, every column typed), which is
 worth a beat on its own.
 
-**Timing, measured:** about seventeen seconds from pressing *Run analysis* to
-the result rendering. That is a cut in the edit, or somewhere to talk over.
+**Timing, measured:** about nine seconds of sandbox execution on the 110k-row
+file, roughly thirty-five to forty seconds end to end including the model
+writing the code. That is a cut in the edit, or somewhere to talk over.
 **The result renders below the question box**, so scroll the Library panel down
 to it — do not leave the shot sitting on the button.
 
 > **Point at:** the Method tab, which holds the generated code.
 
-> **Say:** "It ran over the whole file, not the part that fits in a prompt. The
-> number is a computation, and the code is right there to check."
+> **Say:** "That ran over a hundred and ten thousand rows — the whole file, not
+> the part that fits in a prompt. The number is a computation, and the code is
+> right there to check."
 
 ### 1:50 — Beat 4 · A whole-workspace report, and it persists
 
@@ -124,6 +138,11 @@ Back in the chat:
 ```
 Give me an executive summary of the whole workspace
 ```
+
+**This one is slow: about fifty-five seconds measured.** It profiles every
+spreadsheet in the workspace, and the workspace now contains a large one. Plan
+the cut, or talk over the "Computing KPIs across every dataset…" progress line,
+which is itself worth showing.
 
 A multi-section dashboard renders: a headline verdict with a status badge, a
 KPI strip, per-theme sections with charts, and a **Limits** note. **Reload the
@@ -212,6 +231,6 @@ The questions above are chosen so each one shows a *different* property:
 |---|---|---|
 | 1 | Paid days off rolling over | Semantic retrieval, not keyword matching |
 | 2 | Receipt for a $60 taxi | It answers *and* marks the edge of the source |
-| 3 | Month-over-month trend | Real computation over the whole file |
+| 3 | Which category grew 2021→2022 | Real computation over 110k rows — and it refuses a false premise |
 | 4 | Executive summary | Computed figures, persisted as an artifact |
 | 5 | Capital of France, then an empty Space | Off-document answers are labelled, and grounding is a setting |

@@ -273,7 +273,7 @@ and tasks, and three workspaces:
 
 | Workspace | Contents | What it demonstrates |
 |---|---|---|
-| Northwind HQ | Policies, meeting notes, 5 spreadsheets | Cited retrieval and sandboxed analysis |
+| Northwind HQ | Policies, meeting notes, 5 generated spreadsheets, and one real 110k-row dataset | Cited retrieval and sandboxed analysis over genuine data |
 | Northwind Finance | Budget and forecast data | A second tenant with its own documents |
 | Northwind Sandbox | Nothing, deliberately | The honest "not in these sources" answer |
 
@@ -281,6 +281,16 @@ Most documents are templated filler — enough to exercise ingestion, not enough
 to show retrieval understanding meaning. `time-off-policy.md` and
 `expense-policy.md` are real prose with specific figures, and exist so a
 paraphrased question has something genuine to match against.
+
+The spreadsheets are generated too, with one exception. `northwind_orders.csv`
+in Northwind HQ is **real data**: 110,064 order lines across 2021 and 2022,
+derived from Microsoft's Northwind sample database
+([MIT](https://github.com/jpwhite3/northwind-SQLite3)) and vendored gzipped at
+`backend/scripts/demo_fixtures/`, so seeding needs no network. It exists
+because the analysis engine's claim is that it computes over a real file, and
+a file invented to be computed over does not test that claim. Provenance, the
+exact SQL, and how to regenerate it are in
+[`demo_fixtures/SOURCE.md`](backend/scripts/demo_fixtures/SOURCE.md).
 
 ### Sync a local folder (connector-style MVP)
 
