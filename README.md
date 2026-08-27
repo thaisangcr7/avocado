@@ -615,5 +615,12 @@ actually ran, so Auto is never opaque.
 
 ## License
 
-Not yet chosen — see `docs/architecture.md` §18 for the MIT vs. BUSL tradeoff.
-Until a `LICENSE` file exists, this is all-rights-reserved by default.
+[MIT](LICENSE) — © 2026 Sang Thai. The reasoning behind choosing a permissive
+license at this stage, and the conditions under which BUSL-1.1 would be worth
+revisiting instead, are in [`docs/architecture.md`](docs/architecture.md) §18.
+
+**Third-party data.** `northwind_orders.csv` in the demo seed is derived from
+Microsoft's Northwind sample database via
+[northwind-SQLite3](https://github.com/jpwhite3/northwind-SQLite3), which is
+MIT-licensed; provenance and the exact derivation are recorded in
+[`demo_fixtures/SOURCE.md`](backend/scripts/demo_fixtures/SOURCE.md).

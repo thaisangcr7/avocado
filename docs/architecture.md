@@ -322,6 +322,8 @@ Two separate questions live here — worth untangling, since they get conflated:
 
 **A reasonable default given where this actually is right now:** publish under MIT/Apache now — there's no product or users yet, so there's nothing meaningful to protect, and permissive licensing is the norm for exactly this kind of build-in-public portfolio project. Revisit BUSL if and when this gets real traction and the "someone forks my hosted product" scenario becomes concrete rather than hypothetical.
 
+**Decided (2026-08-27): MIT**, recorded in [`LICENSE`](../LICENSE) at the repo root, and the repo made public the same day. The trigger for revisiting BUSL-1.1 is the one named above and nothing softer — a hosted Avocado with real users, where someone standing up a competing service from this source would actually cost something. Until that is concrete, the permissive license is the honest description of what this is: a portfolio-stage codebase whose value is that people can read it. One caveat worth recording now rather than discovering later — relicensing is only clean while the contributor list is one person, so accepting outside contributions without a CLA makes a later move to BUSL materially harder.
+
 ---
 
 ## 19. Building with AI Coding Tools (Cursor / Copilot / Claude Code)
