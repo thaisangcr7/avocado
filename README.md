@@ -1,6 +1,6 @@
 # Avocado 🥑
 
-**One-line definition:** Avocado is a workspace-grounded AI copilot for team knowledge and data analysis: it answers with citations from your files and can run sandboxed code to produce real computed reports.
+**Avocado** is a workspace-grounded AI copilot for team knowledge and data analysis: it answers with citations from your files and can run sandboxed code to produce real computed reports.
 
 **Team knowledge & analysis copilot.** Upload documents, spreadsheets and images
 into a workspace, then ask questions and get answers that are either *cited* —
