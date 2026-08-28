@@ -1,11 +1,20 @@
-# Avocado 🥑
+# 🥑 Avocado
 
-**Avocado** is a workspace-grounded AI copilot for team knowledge and data analysis: it answers with citations from your files and can run sandboxed code to produce real computed reports.
+### Ask your team's documents **and** data.
 
-**Team knowledge & analysis copilot.** Upload documents, spreadsheets and images
-into a workspace, then ask questions and get answers that are either *cited* —
-grounded in the actual text, with the source shown — or *computed*, by writing
-and running real code against your data in an isolated sandbox.
+Most "chat with your documents" tools treat everything like text.
+
+That works when the answer is buried in a policy, contract, or meeting note.
+
+It doesn't work so well when the question is:
+
+> **"Which region had the highest revenue?"**
+
+That answer shouldn't come from an LLM trying to interpret spreadsheet chunks. It should come from the data.
+
+**Avocado is a team knowledge and analysis copilot built around that distinction.**
+
+It retrieves evidence when a question needs **context** and queries structured data when a question needs **calculation**.
 
 ## Watch it work
 
@@ -15,20 +24,351 @@ Forty-six seconds of the product running. If you would rather drive it yourself
 than watch, [See it working](#see-it-working) below is five commands from a
 clean checkout to a workspace you can interrogate.
 
-## 30-second pitch
 
-Most AI chat tools paraphrase text they retrieve. Avocado goes one step further:
-it combines grounded retrieval with a safe analysis runtime. For document
-questions, it returns cited answers tied to workspace sources. For spreadsheet
-questions, it writes and executes analysis code in a locked-down sandbox and
-returns the computed result, plus the program that produced it. The result is a
-team copilot that is both explainable (citations) and verifiable (computed
-outputs).
+---
 
-The distinction matters. Most "chat with your documents" tools retrieve a
-paragraph and paraphrase it. Avocado does that too, but when the question is
-analytical ("what's the month-over-month trend by region?") it writes pandas,
-runs it, and returns both the number and the program that produced it.
+## The idea
+
+A team's knowledge usually lives in two very different forms:
+
+| 📄 Documents | 📊 Structured data |
+|---|---|
+| Policies | Excel files |
+| Contracts | CSVs |
+| Reports | Large tables |
+| Meeting notes | Transaction data |
+| Images & transcripts | Operational datasets |
+| **Need:** find the right evidence | **Need:** compute the right answer |
+
+Those problems shouldn't be solved the same way.
+
+Avocado gives them separate paths behind one interface.
+
+### Ask a question
+
+**Document question**
+
+> "What does the policy say about refunds?"
+
+Avocado retrieves the relevant passages and answers from the source material.
+
+**Data question**
+
+> "Which product had the highest transaction volume?"
+
+Avocado queries the structured table and calculates the result.
+
+**One interface. Two very different jobs.**
+
+---
+
+# Why I built it
+
+Traditional RAG is great at finding relevant text.
+
+But a spreadsheet isn't just a document with rows.
+
+Imagine a dataset with **110,000 rows** and someone asks:
+
+> "What was the average transaction value by region?"
+
+Retrieving a handful of semantically similar rows isn't enough.
+
+The system needs to work across the **dataset**, not simply find text that sounds related to the question.
+
+That led to the core design principle behind Avocado:
+
+> **Retrieve when the answer is knowledge.  
+> Compute when the answer is data.**
+
+---
+
+# How Avocado works
+
+```text
+                     ┌─────────────────┐
+                     │   User Question │
+                     └────────┬────────┘
+                              │
+                              ▼
+                     ┌─────────────────┐
+                     │ Question Router │
+                     └───────┬─┬───────┘
+                             │ │
+                ┌────────────┘ └────────────┐
+                ▼                           ▼
+       📄 KNOWLEDGE PATH             📊 ANALYSIS PATH
+
+       Retrieve relevant              Query structured
+       source passages                tabular data
+                │                           │
+                ▼                           ▼
+       Ground the answer              Calculate the answer
+       in retrieved evidence          from the dataset
+                │                           │
+                └────────────┬──────────────┘
+                             ▼
+                     ┌─────────────────┐
+                     │     Answer      │
+                     └─────────────────┘
+```
+
+The user doesn't have to choose which engine to use.
+
+Avocado makes that decision from the question.
+
+---
+
+# From upload to answer
+
+Avocado accepts different kinds of team knowledge:
+
+- 📄 PDF
+- 📝 Word documents
+- 📊 Excel / CSV
+- 🖼️ Images
+- 🎙️ Audio
+
+The ingestion pipeline prepares that information for retrieval and analysis.
+
+```text
+Upload
+   │
+   ▼
+Parse
+   │
+   ▼
+Chunk & normalize
+   │
+   ├── Documents ─────────────► Vector representation
+   │
+   └── Spreadsheets ──────────► Text representation
+                    └─────────► Structured table
+   │
+   ▼
+PostgreSQL + pgvector
+   │
+   ▼
+Ready for questions
+```
+
+### Why spreadsheets are stored twice
+
+This is an important part of Avocado's design.
+
+A spreadsheet can contain **knowledge** and **data** at the same time.
+
+Its text representation helps Avocado understand what the dataset contains and retrieve relevant context.
+
+Its structured representation preserves the rows and columns needed for actual analysis.
+
+So Avocado doesn't have to choose between:
+
+> "Chat with this spreadsheet"
+
+and
+
+> "Analyze this spreadsheet."
+
+It can do both.
+
+---
+
+# Retrieval
+
+For knowledge questions, Avocado searches indexed content for the most relevant evidence.
+
+Vector embeddings are stored in **PostgreSQL with pgvector**, with an **HNSW index** for efficient similarity search.
+
+The goal isn't simply to generate a plausible answer.
+
+The goal is to find the material the answer should be based on first.
+
+```text
+Question
+   ↓
+Embedding
+   ↓
+Vector search
+   ↓
+Relevant passages
+   ↓
+Grounded answer
+```
+
+---
+
+# Structured analysis
+
+When the question is analytical, Avocado takes a different route.
+
+Instead of asking an LLM to infer a numeric answer from retrieved spreadsheet text, it works with the structured table.
+
+That matters for questions involving:
+
+- sums
+- averages
+- counts
+- ranking
+- filtering
+- grouping
+- comparisons
+- large datasets
+
+For example:
+
+> "Which business line processed the most transactions?"
+
+is fundamentally different from:
+
+> "What does the report say about transaction monitoring?"
+
+Avocado treats them differently.
+
+---
+
+# What makes Avocado different?
+
+### 🧠 One question interface
+
+Users ask naturally without choosing a retrieval or analytics mode first.
+
+### 📄 Evidence for document questions
+
+Knowledge questions are grounded in the uploaded material rather than answered only from model memory.
+
+### 📊 Real computation for data questions
+
+Analytical questions use structured data instead of relying on semantic similarity between spreadsheet rows.
+
+### 🥑 Mixed knowledge base
+
+Documents, spreadsheets, images, and audio can live together as part of the same workspace.
+
+### 🗄️ One data foundation
+
+PostgreSQL provides the structured data layer while pgvector supports semantic retrieval.
+
+---
+
+# Example questions
+
+### Ask the documents
+
+> "What are the termination conditions in this agreement?"
+
+> "Summarize the policy for high-risk transactions."
+
+> "Where does the report discuss customer complaints?"
+
+### Ask the data
+
+> "How many transactions failed last month?"
+
+> "Which region had the largest total?"
+
+> "What is the average amount by business line?"
+
+### Ask across a workspace
+
+Avocado is designed so users don't need to think about whether their answer lives in a document or a table before asking the question.
+
+That's the system's job.
+
+---
+
+# Architecture
+
+```text
+┌───────────────────────────────────────────────┐
+│                    Avocado                    │
+├───────────────────────────────────────────────┤
+│                                               │
+│                 User / Workspace              │
+│                        │                      │
+│                        ▼                      │
+│                 Question Router               │
+│                  /             \             │
+│                 /               \            │
+│                ▼                 ▼            │
+│      Knowledge Retrieval     Data Analysis    │
+│                │                 │            │
+│        Vector Search        Structured Query  │
+│                │                 │            │
+│                └────────┬────────┘            │
+│                         ▼                     │
+│                    Response                   │
+│                                               │
+├───────────────────────────────────────────────┤
+│         PostgreSQL + pgvector + HNSW          │
+└───────────────────────────────────────────────┘
+```
+
+---
+
+# Engineering decisions
+
+## 1. Don't treat every file as text
+
+RAG works well for retrieving knowledge.
+
+It is not a replacement for querying structured data.
+
+Separating those responsibilities reduces the temptation to make the language model do work better handled by a data engine.
+
+## 2. Preserve spreadsheet structure
+
+Flattening a spreadsheet entirely into text throws away useful relationships between rows, columns, types, and values.
+
+Avocado keeps the structured representation available for analysis.
+
+## 3. Route by intent
+
+The question determines the execution path.
+
+This keeps the user experience simple while allowing the backend to use specialized tools for different types of work.
+
+## 4. Keep retrieval and storage together
+
+Using PostgreSQL alongside pgvector allows structured information and vector representations to live within the same data foundation rather than requiring a separate vector database.
+
+---
+
+# What I wanted to learn
+
+Avocado started from a question:
+
+> **What would a useful "chat with your knowledge" system look like if spreadsheets were treated as data instead of oversized text documents?**
+
+Building it pushed me beyond basic RAG into questions around:
+
+- retrieval architecture
+- structured vs. unstructured data
+- query routing
+- document ingestion
+- vector search
+- data modeling
+- grounded AI responses
+- analytical reliability
+
+The most important lesson has been simple:
+
+> **Not every question should be answered by the LLM.**
+
+Sometimes the model's job is to find the evidence.
+
+Sometimes its job is to understand the request.
+
+And sometimes the best thing it can do is hand the actual computation to the right system.
+
+---
+
+# Project status
+
+🥑 **Avocado is actively being developed.**
+
+The project is an exploration of how AI systems can combine knowledge retrieval and structured analysis behind a simple conversational interface.
+
 
 Full design: [`docs/architecture.md`](docs/architecture.md). Feature roadmap
 toward workspace-platform parity — artifacts, presets, schedules, collaboration —
