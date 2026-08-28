@@ -7,6 +7,14 @@ into a workspace, then ask questions and get answers that are either *cited* —
 grounded in the actual text, with the source shown — or *computed*, by writing
 and running real code against your data in an isolated sandbox.
 
+## Watch it work
+
+[![Avocado Teams AI LLM Demo — click to watch on YouTube](https://i.ytimg.com/vi/FfyPeduV1Sg/hqdefault.jpg)](https://youtu.be/FfyPeduV1Sg)
+
+Forty-six seconds of the product running. If you would rather drive it yourself
+than watch, [See it working](#see-it-working) below is five commands from a
+clean checkout to a workspace you can interrogate.
+
 ## 30-second pitch
 
 Most AI chat tools paraphrase text they retrieve. Avocado goes one step further:
